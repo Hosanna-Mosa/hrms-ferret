@@ -1,0 +1,108 @@
+const express = require('express');
+const router = express.Router();
+const DailyUpdate = require('../models/DailyUpdate');
+const Employee = require('../models/Employee');
+const auth = require('../middleware/auth');
+const role = require('../middleware/role');
+
+// POST /api/daily-updates
+router.post('/', auth, async (req, res) => {
+  const { work_date, todays_tasks, completed, in_progress, blocked, tomorrow_plan, hours_worked } = req.body;
+  const date = work_date || new Date().toISOString().slice(0, 10);
+
+  try {
+    const log = await DailyUpdate.findOneAndUpdate(
+      { employee_id: req.user.employeeId, work_date: date },
+      {
+        $set: {
+          todays_tasks,
+          completed,
+          in_progress,
+          blocked,
+          tomorrow_plan,
+          hours_worked: hours_worked || 8,
+          manager_status: 'pending'
+        }
+      },
+      { upsert: true, new: true }
+    );
+
+    res.status(201).json(log);
+  } catch (error) {
+    console.error('Error submitting daily update:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/daily-updates/me
+router.get('/me', auth, async (req, res) => {
+  try {
+    const list = await DailyUpdate.find({ employee_id: req.user.employeeId })
+      .sort({ work_date: -1 })
+      .exec();
+    res.json(list);
+  } catch (error) {
+    console.error('Error fetching own daily updates:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/manager/daily-updates
+router.get('/manager/all', auth, role(['HR', 'Manager', 'SuperAdmin']), async (req, res) => {
+  try {
+    const query = {};
+
+    if (req.user.role === 'Manager') {
+      const reports = await Employee.find({ manager_id: req.user.employeeId }).select('_id').exec();
+      const reportIds = reports.map(r => r._id);
+      query.employee_id = { $in: reportIds };
+    }
+
+    const list = await DailyUpdate.find(query)
+      .populate('employee_id')
+      .sort({ work_date: -1 })
+      .exec();
+
+    const response = list.map(d => ({
+      ...d.toObject(),
+      full_name: d.employee_id ? d.employee_id.full_name : 'Unknown',
+      employee_code: d.employee_id ? d.employee_id.employee_code : 'Unknown',
+      department: d.employee_id ? d.employee_id.department : 'Unknown'
+    }));
+
+    res.json(response);
+  } catch (error) {
+    console.error('Error fetching daily updates for manager:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// PATCH /api/manager/daily-updates/:id
+router.patch('/manager/:id', auth, role(['HR', 'Manager', 'SuperAdmin']), async (req, res) => {
+  const updateId = req.params.id;
+  const { manager_status, manager_comment } = req.body;
+
+  try {
+    const log = await DailyUpdate.findByIdAndUpdate(
+      updateId,
+      {
+        $set: {
+          manager_status,
+          manager_comment
+        }
+      },
+      { new: true }
+    ).exec();
+
+    if (!log) {
+      return res.status(404).json({ message: 'Daily update record not found' });
+    }
+
+    res.json(log);
+  } catch (error) {
+    console.error('Error resolving daily update:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+module.exports = router;
