@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 5000;
 
 // Enable CORS
 const corsOptions = {
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'], // Frontend Vite dev port
+  origin: ["https://hrms.triozen.tech",'http://localhost:5173', 'http://127.0.0.1:5173'], // Frontend Vite dev port
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
