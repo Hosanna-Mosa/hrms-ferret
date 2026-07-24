@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
 const AdminEmployees = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [employees, setEmployees] = useState([]);
   const [managersList, setManagersList] = useState([]);
@@ -329,7 +331,19 @@ const AdminEmployees = () => {
               </thead>
               <tbody>
                 {filteredEmployees.map((emp) => (
-                  <tr key={emp._id}>
+                  <tr 
+                    key={emp._id}
+                    onClick={(e) => {
+                      if (e.target.closest('button')) return;
+                      if (emp.role_name === 'Manager' || emp.role_name === 'HR') {
+                        navigate(`/manager-detail/${emp._id}`);
+                      } else {
+                        navigate(`/employee-detail/${emp._id}`);
+                      }
+                    }}
+                    style={{ cursor: 'pointer' }}
+                    title="Click to view details"
+                  >
                     <td><code>{emp.employee_code}</code></td>
                     <td>
                       <div className="employee-cell">

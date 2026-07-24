@@ -60,10 +60,14 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
     return res.status(400).json({ message: 'No file uploaded' });
   }
 
-  const { document_type } = req.body;
+  const { document_type, target_employee_id } = req.body;
+  const targetEmpId = (req.user.role === 'HR' || req.user.role === 'SuperAdmin') && target_employee_id 
+    ? target_employee_id 
+    : req.user.employeeId;
+
   try {
     const newDoc = await Document.create({
-      employee_id: req.user.employeeId,
+      employee_id: targetEmpId,
       document_type: document_type || 'Uncategorized',
       storage_key: req.file.filename,
       file_name: req.file.originalname,
@@ -74,7 +78,7 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
     // Also update onboarding progress items if applicable
     if (document_type) {
       await Onboarding.findOneAndUpdate(
-        { employee_id: req.user.employeeId, category: 'documents' },
+        { employee_id: targetEmpId, category: 'documents' },
         {
           $set: {
             status: 'pending',
@@ -102,7 +106,7 @@ router.get('/:id/download', auth, async (req, res) => {
     }
 
     // Check auth permission
-    if (req.user.role !== 'HR Admin' && doc.employee_id.toString() !== req.user.employeeId.toString()) {
+    if (req.user.role !== 'HR' && req.user.role !== 'SuperAdmin' && doc.employee_id.toString() !== req.user.employeeId.toString()) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
@@ -114,6 +118,19 @@ router.get('/:id/download', auth, async (req, res) => {
     res.download(filePath, doc.file_name);
   } catch (error) {
     console.error('Error fetching document download:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/documents/employee/:employeeId
+router.get('/employee/:employeeId', auth, role(['HR', 'SuperAdmin']), async (req, res) => {
+  try {
+    const docs = await Document.find({ employee_id: req.params.employeeId })
+      .sort({ uploaded_at: -1 })
+      .exec();
+    res.json(docs);
+  } catch (error) {
+    console.error('Error fetching employee documents:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { apiRequest } from '../utils/api';
 import Modal from '../components/Modal';
+import { useAuth } from '../context/AuthContext';
 
 const Attendance = () => {
+  const { user } = useAuth();
   const [workMode, setWorkMode] = useState('remote');
   const [attendance, setAttendance] = useState({ status: 'idle', in: null, out: null, breakStart: null, breakTotal: 0 });
   const [history, setHistory] = useState([]);
@@ -14,15 +16,8 @@ const Attendance = () => {
   const [selectedDayInfo, setSelectedDayInfo] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Calendar events & holidays for July 2026
-  const calendarEvents = {
-    3: { title: '🇺🇸 Holiday', desc: 'Independence Day (Observed)' },
-    10: { title: '👥 All Hands', desc: 'Monthly All Hands Meet' },
-    20: { title: '📅 Sprint 12', desc: 'Sprint Planning Session' },
-    21: { title: '🤝 1:1 Sync', desc: '1:1 Manager Alignment' },
-    23: { title: '🚀 Stand-up', desc: 'Daily Tech Sync' },
-    31: { title: '📦 Release', desc: 'Q3 Production Release' }
-  };
+  // Calendar events & holidays
+  const calendarEvents = {};
 
   const fetchAttendanceData = async () => {
     try {
@@ -251,103 +246,134 @@ const Attendance = () => {
   const totalWorkedMinutes = history.reduce((sum, s) => sum + (s.total_work_minutes || 0), 0);
   const workedHoursStr = `${Math.floor(totalWorkedMinutes / 60)}h ${totalWorkedMinutes % 60}m`;
 
+  const getWeeklyStats = () => {
+    const today = new Date();
+    const day = today.getDay();
+    const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(today.setDate(diff));
+    monday.setHours(0, 0, 0, 0);
+
+    const weekLogs = history.filter(s => {
+      const logDate = new Date(s.work_date);
+      return logDate >= monday;
+    });
+
+    const weekMinutes = weekLogs.reduce((sum, s) => sum + (s.total_work_minutes || 0), 0);
+    const weekHoursStr = `${Math.floor(weekMinutes / 60)}h ${weekMinutes % 60}m`;
+    const workingDaysCount = weekLogs.filter(s => s.check_in_at).length;
+
+    return { weekHoursStr, workingDaysCount };
+  };
+
+  const { weekHoursStr, workingDaysCount } = getWeeklyStats();
+
   return (
     <div>
       <div className="page-head">
         <div>
           <span className="eyebrow">TIME & PRESENCE</span>
           <h1>Attendance Management</h1>
-          <p>Clock in, clock out, manage breaks, and review your monthly attendance.</p>
+          <p>
+            {user?.role === 'SuperAdmin' 
+              ? 'Review company holidays and your monthly calendar overview.' 
+              : 'Clock in, clock out, manage breaks, and review your monthly attendance.'}
+          </p>
         </div>
-        <div className="segmented">
-          <button 
-            className={workMode === 'remote' ? 'active' : ''} 
-            onClick={() => attendance.status === 'idle' && setWorkMode('remote')}
-            disabled={attendance.status !== 'idle'}
-          >
-            Remote
-          </button>
-          <button 
-            className={workMode === 'office' ? 'active' : ''} 
-            onClick={() => attendance.status === 'idle' && setWorkMode('office')}
-            disabled={attendance.status !== 'idle'}
-          >
-            Office
-          </button>
-          <button 
-            className={workMode === 'wfh' ? 'active' : ''} 
-            onClick={() => attendance.status === 'idle' && setWorkMode('wfh')}
-            disabled={attendance.status !== 'idle'}
-          >
-            WFH
-          </button>
-        </div>
+        {user?.role !== 'SuperAdmin' && (
+          <div className="segmented">
+            <button 
+              className={workMode === 'remote' ? 'active' : ''} 
+              onClick={() => attendance.status === 'idle' && setWorkMode('remote')}
+              disabled={attendance.status !== 'idle'}
+            >
+              Remote
+            </button>
+            <button 
+              className={workMode === 'office' ? 'active' : ''} 
+              onClick={() => attendance.status === 'idle' && setWorkMode('office')}
+              disabled={attendance.status !== 'idle'}
+            >
+              Office
+            </button>
+            <button 
+              className={workMode === 'wfh' ? 'active' : ''} 
+              onClick={() => attendance.status === 'idle' && setWorkMode('wfh')}
+              disabled={attendance.status !== 'idle'}
+            >
+              WFH
+            </button>
+          </div>
+        )}
       </div>
 
-      <article className="panel attendance-hero">
-        <div>
-          <span className={`pill ${
-            attendance.status === 'idle' ? 'neutral' : 
-            attendance.status === 'break' ? 'warning' : 'success'
-          }`} id="attPill">
-            {attendance.status === 'idle' && 'Not Started'}
-            {attendance.status === 'working' && 'Working'}
-            {attendance.status === 'break' && 'On Break'}
-            {attendance.status === 'done' && 'Completed'}
-          </span>
-          <h2 id="attClock">{clock}</h2>
-          <p id="attDate">{dateStr}</p>
-        </div>
-        <div className="actions">
-          <button 
-            className="btn primary" 
-            id="attCheckIn" 
-            onClick={handleCheckIn} 
-            disabled={attendance.status !== 'idle'}
-          >
-            Clock In
-          </button>
-          <button 
-            className="btn outline" 
-            id="attBreak" 
-            onClick={handleToggleBreak} 
-            disabled={attendance.status !== 'working' && attendance.status !== 'break'}
-          >
-            {attendance.status === 'break' ? 'Stop Break' : 'Start Break'}
-          </button>
-          <button 
-            className="btn dark" 
-            id="attCheckOut" 
-            onClick={handleCheckOut} 
-            disabled={attendance.status !== 'working' && attendance.status !== 'break'}
-          >
-            Clock Out
-          </button>
-        </div>
-      </article>
+      {user?.role !== 'SuperAdmin' && (
+        <>
+          <article className="panel attendance-hero">
+            <div>
+              <span className={`pill ${
+                attendance.status === 'idle' ? 'neutral' : 
+                attendance.status === 'break' ? 'warning' : 'success'
+              }`} id="attPill">
+                {attendance.status === 'idle' && 'Not Started'}
+                {attendance.status === 'working' && 'Working'}
+                {attendance.status === 'break' && 'On Break'}
+                {attendance.status === 'done' && 'Completed'}
+              </span>
+              <h2 id="attClock">{clock}</h2>
+              <p id="attDate">{dateStr}</p>
+            </div>
+            <div className="actions">
+              <button 
+                className="btn primary" 
+                id="attCheckIn" 
+                onClick={handleCheckIn} 
+                disabled={attendance.status !== 'idle'}
+              >
+                Clock In
+              </button>
+              <button 
+                className="btn outline" 
+                id="attBreak" 
+                onClick={handleToggleBreak} 
+                disabled={attendance.status !== 'working' && attendance.status !== 'break'}
+              >
+                {attendance.status === 'break' ? 'Stop Break' : 'Start Break'}
+              </button>
+              <button 
+                className="btn dark" 
+                id="attCheckOut" 
+                onClick={handleCheckOut} 
+                disabled={attendance.status !== 'working' && attendance.status !== 'break'}
+              >
+                Clock Out
+              </button>
+            </div>
+          </article>
 
-      <div className="metrics four">
-        <article className="metric">
-          <span>Today</span>
-          <strong id="todayWorked">{getDurationString(getWorkedTimeMs())}</strong>
-          <small>Total worked</small>
-        </article>
-        <article className="metric">
-          <span>This Week</span>
-          <strong>34h 20m</strong>
-          <small>4 working days</small>
-        </article>
-        <article className="metric">
-          <span>This Month</span>
-          <strong>{history.length > 0 ? workedHoursStr : '168h'}</strong>
-          <small>Attendance Summary</small>
-        </article>
-        <article className="metric">
-          <span>Late Logins</span>
-          <strong>{lateDaysCount}</strong>
-          <small>Current month</small>
-        </article>
-      </div>
+          <div className="metrics four">
+            <article className="metric">
+              <span>Today</span>
+              <strong id="todayWorked">{getDurationString(getWorkedTimeMs())}</strong>
+              <small>Total worked</small>
+            </article>
+            <article className="metric">
+              <span>This Week</span>
+              <strong>{weekHoursStr}</strong>
+              <small>{workingDaysCount} working day{workingDaysCount !== 1 ? 's' : ''}</small>
+            </article>
+            <article className="metric">
+              <span>This Month</span>
+              <strong>{workedHoursStr}</strong>
+              <small>Attendance Summary</small>
+            </article>
+            <article className="metric">
+              <span>Late Logins</span>
+              <strong>{lateDaysCount}</strong>
+              <small>Current month</small>
+            </article>
+          </div>
+        </>
+      )}
 
       <div className="grid calendar-grid">
         <article className="panel">
@@ -452,53 +478,55 @@ const Attendance = () => {
         </article>
       </div>
 
-      <article className="panel table-panel">
-        <div className="panel-head pad">
-          <div>
-            <h3>Attendance History</h3>
-            <p>Detailed daily records. Click a row to view details.</p>
+      {user?.role !== 'SuperAdmin' && (
+        <article className="panel table-panel">
+          <div className="panel-head pad">
+            <div>
+              <h3>Attendance History</h3>
+              <p>Detailed daily records. Click a row to view details.</p>
+            </div>
+            <button className="btn outline small" onClick={exportCSV}>
+              Export CSV
+            </button>
           </div>
-          <button className="btn outline small" onClick={exportCSV}>
-            Export CSV
-          </button>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Mode</th>
-                <th>Clock In</th>
-                <th>Break</th>
-                <th>Clock Out</th>
-                <th>Hours</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="attendanceHistory">
-              {history.map((row) => (
-                <tr key={row._id} style={{ cursor: 'pointer' }} onClick={() => handleRowClick(row)}>
-                  <td>{formatDate(row.work_date)}</td>
-                  <td style={{ textTransform: 'capitalize' }}>{row.work_mode}</td>
-                  <td>{formatTime(row.check_in_at)}</td>
-                  <td>{getDurationString(row.total_break_minutes * 60000)}</td>
-                  <td>{formatTime(row.check_out_at)}</td>
-                  <td>{getDurationString(row.total_work_minutes * 60000)}</td>
-                  <td>
-                    <span className={`pill ${
-                      row.status === 'present' ? 'success' : 
-                      row.status === 'late' ? 'warning' : 'neutral'
-                    }`}>
-                      {row.status === 'present' && 'Present'}
-                      {row.status === 'late' && 'Late'}
-                    </span>
-                  </td>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Mode</th>
+                  <th>Clock In</th>
+                  <th>Break</th>
+                  <th>Clock Out</th>
+                  <th>Hours</th>
+                  <th>Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </article>
+              </thead>
+              <tbody id="attendanceHistory">
+                {history.map((row) => (
+                  <tr key={row._id} style={{ cursor: 'pointer' }} onClick={() => handleRowClick(row)}>
+                    <td>{formatDate(row.work_date)}</td>
+                    <td style={{ textTransform: 'capitalize' }}>{row.work_mode}</td>
+                    <td>{formatTime(row.check_in_at)}</td>
+                    <td>{getDurationString(row.total_break_minutes * 60000)}</td>
+                    <td>{formatTime(row.check_out_at)}</td>
+                    <td>{getDurationString(row.total_work_minutes * 60000)}</td>
+                    <td>
+                      <span className={`pill ${
+                        row.status === 'present' ? 'success' : 
+                        row.status === 'late' ? 'warning' : 'neutral'
+                      }`}>
+                        {row.status === 'present' && 'Present'}
+                        {row.status === 'late' && 'Late'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      )}
 
       {/* Detail Modal Dialog */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>

@@ -11,7 +11,7 @@ const Announcements = () => {
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
 
-  const isAdmin = user && user.role === 'HR Admin';
+  const isAdmin = user && ['HR', 'SuperAdmin'].includes(user.role);
 
   const fetchAnnouncements = async () => {
     try {
@@ -79,22 +79,30 @@ const Announcements = () => {
       </div>
 
       <div className="announcement-grid">
-        <article className="featured-announcement">
-          <span>COMPANY UPDATE</span>
-          <h2>Welcome to Ferret PeopleOS</h2>
-          <p>Our new employee experience platform brings attendance, onboarding, leave, tasks, training, and HR services into one secure workspace.</p>
-          <small>Published by HR · July 19, 2026</small>
-        </article>
+        {announcements.length > 0 ? (
+          <article className="featured-announcement">
+            <span>{announcements[0].category?.toUpperCase() || 'COMPANY UPDATE'}</span>
+            <h2>{announcements[0].title}</h2>
+            <p>{announcements[0].body}</p>
+            <small>Published by {announcements[0].author_name || 'HR'} · {new Date(announcements[0].published_at || announcements[0].createdAt || Date.now()).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</small>
+          </article>
+        ) : (
+          <article className="featured-announcement">
+            <span>ANNOUNCEMENTS</span>
+            <h2>No Announcements</h2>
+            <p>There are no company updates published at the moment.</p>
+          </article>
+        )}
 
         <div id="announcementList" className="announcement-stack">
-          {announcements.map((ann) => (
-            <article className="ann-card" key={ann.id}>
+          {announcements.slice(1).map((ann) => (
+            <article className="ann-card" key={ann._id || ann.id}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>{ann.category?.toUpperCase()}</span>
                 {isAdmin && (
                   <button 
                     className="text-btn" 
-                    onClick={() => handleDelete(ann.id)} 
+                    onClick={() => handleDelete(ann._id || ann.id)} 
                     style={{ color: 'var(--red)', fontSize: '9px' }}
                   >
                     Delete
@@ -107,21 +115,10 @@ const Announcements = () => {
             </article>
           ))}
 
-          {announcements.length === 0 && (
-            <>
-              <article className="ann-card">
-                <span>HOLIDAY</span>
-                <h3>Independence Day Holiday</h3>
-                <p>Office will remain closed on August 15.</p>
-                <small>Published by HR</small>
-              </article>
-              <article className="ann-card">
-                <span>EVENT</span>
-                <h3>Monthly All-Hands</h3>
-                <p>Join the company-wide meeting this Friday at 4 PM.</p>
-                <small>Published by HR</small>
-              </article>
-            </>
+          {announcements.length <= 1 && (
+            <div style={{ padding: '20px', textAlign: 'center', opacity: 0.7, fontSize: '11px', background: '#fff', borderRadius: '13px', border: '1px solid var(--line)' }}>
+              No other announcements.
+            </div>
           )}
         </div>
       </div>

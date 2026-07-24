@@ -17,9 +17,40 @@ const Dashboard = () => {
   const [clock, setClock] = useState('00:00:00');
   const [todayDateStr, setTodayDateStr] = useState('');
 
+  // SuperAdmin CRM States
+  const [employeeCount, setEmployeeCount] = useState(0);
+  const [projectCount, setProjectCount] = useState(0);
+  const [managerCount, setManagerCount] = useState(0);
+  const [recentEmployees, setRecentEmployees] = useState([]);
+  const [recentProjects, setRecentProjects] = useState([]);
+
   // Fetch initial dashboard metrics
   const fetchMetrics = async () => {
     try {
+      if (user?.role === 'SuperAdmin') {
+        const empRes = await apiRequest('/api/employees/admin/employees');
+        if (empRes.ok) {
+          const emps = await empRes.json();
+          setEmployeeCount(emps.filter(e => e.role_name === 'Employee').length);
+          setManagerCount(emps.filter(e => e.role_name === 'Manager' || e.role_name === 'HR').length);
+          setRecentEmployees(emps.slice(0, 5));
+        }
+
+        const projRes = await apiRequest('/api/projects');
+        if (projRes.ok) {
+          const projs = await projRes.json();
+          setProjectCount(projs.length);
+          setRecentProjects(projs.slice(0, 5));
+        }
+
+        const annRes = await apiRequest('/api/announcements');
+        if (annRes.ok) {
+          const annData = await annRes.json();
+          setNews(annData.slice(0, 2));
+        }
+        return;
+      }
+
       // 1. Fetch current month attendance to extract today's status
       const month = new Date().toISOString().slice(0, 7);
       const attRes = await apiRequest(`/api/attendance/me?month=${month}`);
@@ -39,8 +70,6 @@ const Dashboard = () => {
             });
           } else {
             // Check if currently on break (active break where ended_at is null)
-            // Wait, we can check if there's an active break
-            // In attendance.js we returned breaks, let's look:
             const activeBreak = todaySession.breaks?.find(b => !b.ended_at);
             if (activeBreak) {
               setAttendance({
@@ -105,8 +134,12 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
-    fetchMetrics();
+    if (user) {
+      fetchMetrics();
+    }
+  }, [user]);
 
+  useEffect(() => {
     // Clock ticker
     const interval = setInterval(() => {
       const n = new Date();
@@ -211,6 +244,154 @@ const Dashboard = () => {
   const remainingCasual = Math.max(0, totalCasual - approvedCasual);
   const remainingSick = Math.max(0, totalSick - approvedSick);
   const totalRemaining = remainingCasual + remainingSick;
+
+  if (user?.role === 'SuperAdmin') {
+    return (
+      <div>
+        <div className="page-head">
+          <div>
+            <span className="eyebrow">ENTERPRISE CENTRAL</span>
+            <h1>Operations Control Panel</h1>
+            <p>Real-time corporate metrics, active projects, team size, and communication channels.</p>
+          </div>
+          <div className="date-chip" id="todayDate">{todayDateStr}</div>
+        </div>
+
+        {/* CRM Metric Cards */}
+        <div className="metrics three" style={{ gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+          <article className="metric" style={{ cursor: 'pointer' }} onClick={() => navigate('/admin/employees')}>
+            <span>Total Developers</span>
+            <strong>{employeeCount} SDEs</strong>
+            <small>Active employee roster</small>
+          </article>
+
+          <article className="metric" style={{ cursor: 'pointer' }} onClick={() => navigate('/projects-sprints')}>
+            <span>Active Projects</span>
+            <strong>{projectCount} Workspaces</strong>
+            <small>Total project codebases</small>
+          </article>
+
+          <article className="metric" style={{ cursor: 'pointer' }} onClick={() => navigate('/admin/managers')}>
+            <span>Management Team</span>
+            <strong>{managerCount} Leads</strong>
+            <small>Active Project Managers & HRs</small>
+          </article>
+        </div>
+
+        <div className="grid two" style={{ gap: '20px', marginTop: '20px' }}>
+          {/* Active Projects List */}
+          <article className="panel">
+            <div className="panel-head">
+              <div>
+                <h3>Project Portfolios</h3>
+                <p>Enterprise client projects and designated leads.</p>
+              </div>
+              <button className="text-btn" onClick={() => navigate('/projects-sprints')}>
+                Manage Portfolios
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' }}>
+              {recentProjects.map(p => (
+                <div key={p._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fafbfc' }}>
+                  <div>
+                    <code style={{ fontSize: '10px', fontWeight: 'bold' }}>{p.key}</code>
+                    <div style={{ fontWeight: 'bold', fontSize: '13px', marginTop: '2px' }}>{p.name}</div>
+                  </div>
+                  <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                    Lead: <strong>{p.lead_id ? p.lead_id.full_name : 'Unassigned'}</strong>
+                  </span>
+                </div>
+              ))}
+              {recentProjects.length === 0 && (
+                <div style={{ padding: '15px', textAlign: 'center', opacity: 0.5 }}>No active projects recorded.</div>
+              )}
+            </div>
+          </article>
+
+          {/* Company Announcements */}
+          <article className="panel">
+            <div className="panel-head">
+              <div>
+                <h3>Announcements & Updates</h3>
+                <p>Latest corporate bulletin posts.</p>
+              </div>
+              <button className="text-btn" onClick={() => navigate('/announcements')}>
+                Go to Bulletin
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' }}>
+              {news.map(n => (
+                <div key={n._id || n.id} style={{ padding: '12px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fafbfc' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 'bold', color: 'var(--primary)' }}>
+                    <span>{n.category?.toUpperCase()}</span>
+                    <span style={{ fontWeight: 'normal', color: 'var(--muted)' }}>{new Date(n.published_at || n.createdAt || Date.now()).toLocaleDateString()}</span>
+                  </div>
+                  <strong style={{ fontSize: '13px', display: 'block', marginTop: '4px', marginBottom: '4px' }}>{n.title}</strong>
+                  <p style={{ fontSize: '11px', color: 'var(--muted)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    {n.body}
+                  </p>
+                </div>
+              ))}
+              {news.length === 0 && (
+                <div style={{ padding: '15px', textAlign: 'center', opacity: 0.5 }}>No announcements published.</div>
+              )}
+            </div>
+          </article>
+        </div>
+
+        {/* Corporate Team Directory preview */}
+        <article className="panel table-panel active" style={{ marginTop: '20px' }}>
+          <div className="panel-head pad">
+            <div>
+              <h3>Recent Company Boardings</h3>
+              <p>Overview of newly onboarded team profiles. Click row to inspect.</p>
+            </div>
+            <button className="btn outline small" onClick={() => navigate('/admin/employees')}>
+              All Employees
+            </button>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Full Name</th>
+                  <th>Designation</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentEmployees.map(emp => (
+                  <tr 
+                    key={emp._id} 
+                    onClick={() => {
+                      if (emp.role_name === 'Manager' || emp.role_name === 'HR') {
+                        navigate(`/manager-detail/${emp._id}`);
+                      } else {
+                        navigate(`/employee-detail/${emp._id}`);
+                      }
+                    }} 
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <td><code>{emp.employee_code}</code></td>
+                    <td><b>{emp.full_name}</b></td>
+                    <td>{emp.designation}</td>
+                    <td>
+                      <span className="pill warning" style={{ fontSize: '9px', textTransform: 'uppercase' }}>{emp.role_name}</span>
+                    </td>
+                    <td>
+                      <span className={`pill ${emp.employment_status === 'active' ? 'success' : 'warning'}`}>{emp.employment_status}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -347,29 +528,8 @@ const Dashboard = () => {
             </button>
           </div>
           <div className="meeting-list">
-            <div className="meeting">
-              <div className="datebox"><b>20</b><small>JUL</small></div>
-              <div>
-                <strong>Daily Engineering Stand-up</strong>
-                <p>10:00 AM · Google Meet</p>
-              </div>
-              <span>30m</span>
-            </div>
-            <div className="meeting">
-              <div className="datebox"><b>20</b><small>JUL</small></div>
-              <div>
-                <strong>Sprint Planning</strong>
-                <p>2:30 PM · Conference Room A</p>
-              </div>
-              <span>1h</span>
-            </div>
-            <div className="meeting">
-              <div className="datebox"><b>21</b><small>JUL</small></div>
-              <div>
-                <strong>1:1 with Manager</strong>
-                <p>11:30 AM · Google Meet</p>
-              </div>
-              <span>30m</span>
+            <div style={{ padding: '20px', textAlign: 'center', opacity: 0.7, fontSize: '11px' }}>
+              No upcoming meetings scheduled.
             </div>
           </div>
         </article>
@@ -435,16 +595,14 @@ const Dashboard = () => {
             </div>
           </div>
           {news.length > 0 ? news.map(n => (
-            <div className="news" key={n.id}>
+            <div className="news" key={n._id || n.id}>
               <b>{n.title}</b>
               <p>{n.body}</p>
               <small>Published recently</small>
             </div>
           )) : (
             <div className="news">
-              <b>Welcome to Ferret PeopleOS</b>
-              <p>Our new employee experience platform brings attendance, onboarding, leave, tasks, training, and HR services into one secure workspace.</p>
-              <small>2 hours ago</small>
+              <small>No news published yet.</small>
             </div>
           )}
         </article>

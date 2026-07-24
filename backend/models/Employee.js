@@ -36,6 +36,10 @@ const EmployeeSchema = new mongoose.Schema({
   department: {
     type: String
   },
+  department_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Department'
+  },
   designation: {
     type: String
   },

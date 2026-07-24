@@ -39,6 +39,10 @@ app.use('/api/performance', require('./routes/performance'));
 app.use('/api/training', require('./routes/training'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/daily-updates', require('./routes/daily-updates'));
+app.use('/api/offboarding', require('./routes/offboarding'));
+app.use('/api/departments', require('./routes/departments'));
+app.use('/api/projects', require('./routes/projects'));
+app.use('/api/sprints', require('./routes/sprints'));
 
 // Simple index test endpoint
 app.get('/api/health', (req, res) => {

@@ -7,8 +7,14 @@ const TasksSprint = () => {
   const { user } = useAuth();
   const [tasks, setTasks] = useState([]);
   const [reportsList, setReportsList] = useState([]);
-  const [sprint, setSprint] = useState({ sprint: 'Sprint 12', total_points: 23, completed_points: 18 });
+  const [sprint, setSprint] = useState({ sprint: 'Sprint 12', total_points: 0, completed_points: 0 });
   const [viewMode, setViewMode] = useState('board'); // 'board' or 'list'
+
+  // Projects & Sprints integration states
+  const [projects, setProjects] = useState([]);
+  const [sprints, setSprints] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [selectedSprintId, setSelectedSprintId] = useState('');
 
   // Create Task Modal States
   const [modalOpen, setModalOpen] = useState(false);
@@ -19,20 +25,77 @@ const TasksSprint = () => {
   const [dueDate, setDueDate] = useState('');
 
   const isManager = user?.role === 'Manager';
+  const canApproveToDone = user && ['Manager', 'HR', 'SuperAdmin'].includes(user.role);
+
+  const fetchProjectsAndSprints = async () => {
+    try {
+      const res = await apiRequest('/api/projects');
+      if (res.ok) {
+        const projData = await res.json();
+        setProjects(projData);
+        if (projData.length > 0) {
+          const firstProjId = projData[0]._id;
+          setSelectedProjectId(firstProjId);
+
+          const sprintRes = await apiRequest(`/api/sprints?project_id=${firstProjId}`);
+          if (sprintRes.ok) {
+            const sprintData = await sprintRes.json();
+            setSprints(sprintData);
+            const active = sprintData.find(s => s.status === 'active');
+            if (active) {
+              setSelectedSprintId(active._id);
+            } else if (sprintData.length > 0) {
+              setSelectedSprintId(sprintData[0]._id);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const fetchTasksAndSprint = async () => {
+    if (!selectedProjectId || !selectedSprintId) return;
     try {
-      const endpoint = isManager ? '/api/tasks/manager/all' : '/api/tasks/me';
+      const endpoint = isManager 
+        ? `/api/tasks/manager/all?project_id=${selectedProjectId}&sprint_id=${selectedSprintId}` 
+        : `/api/tasks/me?project_id=${selectedProjectId}&sprint_id=${selectedSprintId}`;
       const taskRes = await apiRequest(endpoint);
       if (taskRes.ok) {
         const taskData = await taskRes.json();
         setTasks(taskData);
-      }
 
-      const sprintRes = await apiRequest('/api/tasks/sprints/current');
+        const activeSprint = sprints.find(s => s._id === selectedSprintId);
+        if (activeSprint) {
+          const totalPoints = taskData.reduce((acc, t) => acc + (t.story_points || 0), 0);
+          const completedPoints = taskData.filter(t => t.status === 'done').reduce((acc, t) => acc + (t.story_points || 0), 0);
+          setSprint({
+            sprint: activeSprint.name,
+            total_points: totalPoints,
+            completed_points: completedPoints
+          });
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleProjectChange = async (projId) => {
+    setSelectedProjectId(projId);
+    setSelectedSprintId('');
+    try {
+      const sprintRes = await apiRequest(`/api/sprints?project_id=${projId}`);
       if (sprintRes.ok) {
         const sprintData = await sprintRes.json();
-        setSprint(sprintData);
+        setSprints(sprintData);
+        const active = sprintData.find(s => s.status === 'active');
+        if (active) {
+          setSelectedSprintId(active._id);
+        } else if (sprintData.length > 0) {
+          setSelectedSprintId(sprintData[0]._id);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -44,8 +107,7 @@ const TasksSprint = () => {
       const res = await apiRequest('/api/employees/admin/employees');
       if (res.ok) {
         const data = await res.json();
-        // Direct reports of this manager
-        const direct = data.filter(e => e.role_name === 'Employee' && e.manager_id && e.manager_id._id === user.employeeId);
+        const direct = data.filter(e => e.role_name === 'Employee' && e.manager_id && (e.manager_id._id || e.manager_id) === user.employeeId);
         setReportsList(direct);
       }
     } catch (e) {
@@ -55,14 +117,24 @@ const TasksSprint = () => {
 
   useEffect(() => {
     if (user) {
-      fetchTasksAndSprint();
+      fetchProjectsAndSprints();
       if (isManager) {
         fetchReports();
       }
     }
   }, [user]);
 
+  useEffect(() => {
+    if (selectedProjectId && selectedSprintId) {
+      fetchTasksAndSprint();
+    }
+  }, [selectedProjectId, selectedSprintId, sprints]);
+
   const handleStatusChange = async (taskId, newStatus) => {
+    if (newStatus === 'done' && !canApproveToDone) {
+      alert('Forbidden: Only managers can approve tasks to Done.');
+      return;
+    }
     try {
       const endpoint = isManager ? `/api/tasks/manager/${taskId}` : `/api/tasks/${taskId}`;
       const res = await apiRequest(endpoint, {
@@ -71,6 +143,9 @@ const TasksSprint = () => {
       });
       if (res.ok) {
         fetchTasksAndSprint();
+      } else {
+        const err = await res.json();
+        alert(err.message || 'Failed to update task status.');
       }
     } catch (err) {
       console.error(err);
@@ -79,6 +154,10 @@ const TasksSprint = () => {
 
   const handleCreateTask = async (e) => {
     e.preventDefault();
+    if (!selectedProjectId || !selectedSprintId) {
+      alert('Please select a project and sprint first.');
+      return;
+    }
     try {
       const res = await apiRequest('/api/tasks', {
         method: 'POST',
@@ -88,7 +167,9 @@ const TasksSprint = () => {
           story_points: storyPoints,
           priority: priority,
           due_date: dueDate || undefined,
-          sprint: 'Sprint 12'
+          project_id: selectedProjectId,
+          sprint_id: selectedSprintId,
+          sprint: sprint.sprint
         })
       });
       if (res.ok) {
@@ -143,6 +224,26 @@ const TasksSprint = () => {
 
   return (
     <div>
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', alignItems: 'center', background: '#f8fafc', padding: '10px 16px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--muted)' }}>Project:</span>
+          <select value={selectedProjectId} onChange={(e) => handleProjectChange(e.target.value)} style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--line)', background: '#fff', fontSize: '13px' }}>
+            {projects.map(p => (
+              <option key={p._id} value={p._id}>{p.name} ({p.key})</option>
+            ))}
+            {projects.length === 0 && <option value="">-- Create Project First --</option>}
+          </select>
+        </div>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--muted)' }}>Sprint:</span>
+          <select value={selectedSprintId} onChange={(e) => setSelectedSprintId(e.target.value)} style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--line)', background: '#fff', fontSize: '13px' }}>
+            {sprints.map(s => (
+              <option key={s._id} value={s._id}>{s.name} ({s.status})</option>
+            ))}
+            {sprints.length === 0 && <option value="">-- Plan Sprint First --</option>}
+          </select>
+        </div>
+      </div>
       <div className="page-head">
         <div>
           <span className="eyebrow">{isManager ? 'TEAM sprint management' : 'DELIVERY'}</span>
@@ -225,7 +326,7 @@ const TasksSprint = () => {
                           ◀
                         </button>
                       )}
-                      {col.key !== 'done' && (
+                      {col.key !== 'done' && !(col.key === 'review' && !canApproveToDone) && (
                         <button 
                           className="btn primary small" 
                           style={{ padding: '2px 5px', fontSize: '8px' }}
@@ -277,7 +378,7 @@ const TasksSprint = () => {
                         <option value="todo">To Do</option>
                         <option value="in progress">In Progress</option>
                         <option value="review">Review</option>
-                        <option value="done">Done</option>
+                        {(canApproveToDone || t.status === 'done') && <option value="done">Done</option>}
                       </select>
                     </td>
                     <td>{t.due_date ? new Date(t.due_date).toLocaleDateString() : '—'}</td>
