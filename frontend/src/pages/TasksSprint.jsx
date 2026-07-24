@@ -190,19 +190,6 @@ const TasksSprint = () => {
     }
   };
 
-  const syncJira = async () => {
-    try {
-      const res = await apiRequest('/api/tasks/integrations/jira/sync', { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        alert(data.message);
-        fetchTasksAndSprint();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
   const getTasksByStatus = (status) => {
     return tasks.filter(t => t.status.toLowerCase() === status.toLowerCase());
   };
@@ -251,7 +238,7 @@ const TasksSprint = () => {
           <p>
             {isManager 
               ? 'Assign sprint tasks, monitor status boards, check deadlines, and track SDE story points.'
-              : 'Track Jira-style work items, story points, due dates, priority, and status.'
+              : 'Track sprint work items, story points, due dates, priority, and status.'
             }
           </p>
         </div>
@@ -261,9 +248,6 @@ const TasksSprint = () => {
               + Assign Task
             </button>
           )}
-          <button className="btn outline small" onClick={syncJira}>
-            Sync Jira
-          </button>
           <div className="segmented">
             <button className={viewMode === 'board' ? 'active' : ''} onClick={() => setViewMode('board')}>
               Board
