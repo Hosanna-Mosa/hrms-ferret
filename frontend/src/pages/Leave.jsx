@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 
 const Leave = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [leaves, setLeaves] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
   
@@ -15,10 +17,11 @@ const Leave = () => {
   const [reason, setReason] = useState('');
 
   const isManager = user?.role === 'Manager';
+  const isAdminOrManager = user && ['Manager', 'HR', 'SuperAdmin'].includes(user.role);
 
   const fetchLeaves = async () => {
     try {
-      const endpoint = isManager ? '/api/leave/manager/all' : '/api/leave/me';
+      const endpoint = isAdminOrManager ? '/api/leave/manager/all' : '/api/leave/me';
       const res = await apiRequest(endpoint);
       if (res.ok) {
         const data = await res.json();
@@ -129,7 +132,7 @@ const Leave = () => {
   const usedCount = approvedCasual + approvedSick;
   const pendingCount = leaves.filter(l => l.status === 'pending').length;
 
-  if (isManager) {
+  if (isAdminOrManager) {
     return (
       <div>
         <div className="page-head">
@@ -182,7 +185,15 @@ const Leave = () => {
               </thead>
               <tbody>
                 {leaves.map((l) => (
-                  <tr key={l._id}>
+                  <tr 
+                    key={l._id}
+                    onClick={(e) => {
+                      if (e.target.closest('button')) return;
+                      navigate(`/employee-detail/${l.employee_id?._id || l.employee_id}`);
+                    }}
+                    style={{ cursor: 'pointer' }}
+                    title="Click to view employee work & attendance profile"
+                  >
                     <td><b>{l.full_name || 'Team SDE'}</b></td>
                     <td>{l.leave_type}</td>
                     <td>{formatDateRange(l.start_date, l.end_date)}</td>

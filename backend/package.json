@@ -8,6 +8,9 @@
     "dev": "nodemon server.js",
     "seed": "node scripts/seed.js",
     "clear-attendance": "node scripts/clear-attendance.js",
+    "reset-test-data": "node scripts/reset-test-data.js",
+    "test-email": "node scripts/test-email.js",
+    "reset-db": "node scripts/reset-db.js",
     "test": "echo \"Error: no test specified\" && exit 0"
   },
   "dependencies": {
@@ -19,7 +22,8 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^9.8.0",
     "morgan": "^1.11.0",
-    "multer": "^1.4.5-lts.1"
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^9.0.3"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"

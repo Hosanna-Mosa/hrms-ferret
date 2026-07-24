@@ -19,6 +19,11 @@ import Training from './pages/Training';
 import Profile from './pages/Profile';
 import AdminManagers from './pages/AdminManagers';
 import AdminEmployees from './pages/AdminEmployees';
+import EmployeeDetail from './pages/EmployeeDetail';
+import ManagerDetail from './pages/ManagerDetail';
+import AdminDepartments from './pages/AdminDepartments';
+import ProjectsSprints from './pages/ProjectsSprints';
+import DepartmentDetail from './pages/DepartmentDetail';
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -43,13 +48,6 @@ const RoleRoute = ({ children, allowedRoles }) => {
 
   if (!user || !allowedRoles.includes(user.role)) {
     if (!user) return <Navigate to="/login" replace />;
-    
-    // Redirect to their default page
-    if (user.role === 'Manager') {
-      return <Navigate to="/admin/employees" replace />;
-    } else if (user.role === 'HR') {
-      return <Navigate to="/admin/managers" replace />;
-    }
     return <Navigate to="/" replace />;
   }
 
@@ -60,9 +58,6 @@ const DashboardRedirect = () => {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
   
-  if (user.role === 'HR') {
-    return <Navigate to="/admin/managers" replace />;
-  }
   return <Dashboard />;
 };
 
@@ -108,17 +103,17 @@ function App() {
             <Route index element={<DashboardRedirect />} />
             
             {/* Employee/Manager Shared Roles */}
-            <Route path="attendance" element={<RoleRoute allowedRoles={['Employee', 'Manager', 'SuperAdmin']}><Attendance /></RoleRoute>} />
+            <Route path="attendance" element={<RoleRoute allowedRoles={['Employee', 'Manager', 'HR', 'SuperAdmin']}><Attendance /></RoleRoute>} />
             <Route path="daily-updates" element={<RoleRoute allowedRoles={['Employee', 'Manager', 'SuperAdmin']}><DailyUpdates /></RoleRoute>} />
-            <Route path="leave" element={<RoleRoute allowedRoles={['Employee', 'Manager', 'SuperAdmin']}><Leave /></RoleRoute>} />
+            <Route path="leave" element={<RoleRoute allowedRoles={['Employee', 'Manager', 'HR', 'SuperAdmin']}><Leave /></RoleRoute>} />
             <Route path="tasks" element={<RoleRoute allowedRoles={['Employee', 'Manager', 'SuperAdmin']}><TasksSprint /></RoleRoute>} />
-            <Route path="onboarding" element={<RoleRoute allowedRoles={['Employee', 'SuperAdmin']}><Onboarding /></RoleRoute>} />
-            <Route path="offboarding" element={<RoleRoute allowedRoles={['Employee', 'SuperAdmin']}><Offboarding /></RoleRoute>} />
-            <Route path="documents" element={<RoleRoute allowedRoles={['Employee', 'SuperAdmin']}><Documents /></RoleRoute>} />
+            <Route path="onboarding" element={<RoleRoute allowedRoles={['Employee', 'Manager', 'HR', 'SuperAdmin']}><Onboarding /></RoleRoute>} />
+            <Route path="offboarding" element={<RoleRoute allowedRoles={['Employee', 'Manager', 'HR', 'SuperAdmin']}><Offboarding /></RoleRoute>} />
+            <Route path="documents" element={<RoleRoute allowedRoles={['Employee', 'Manager', 'HR', 'SuperAdmin']}><Documents /></RoleRoute>} />
             <Route path="announcements" element={<RoleRoute allowedRoles={['Employee', 'SuperAdmin']}><Announcements /></RoleRoute>} />
             <Route path="performance" element={<RoleRoute allowedRoles={['Employee', 'SuperAdmin']}><Performance /></RoleRoute>} />
             <Route path="training" element={<RoleRoute allowedRoles={['Employee', 'SuperAdmin']}><Training /></RoleRoute>} />
-            <Route path="profile" element={<RoleRoute allowedRoles={['Employee', 'Manager', 'SuperAdmin']}><Profile /></RoleRoute>} />
+            <Route path="profile" element={<RoleRoute allowedRoles={['Employee', 'Manager', 'HR', 'SuperAdmin']}><Profile /></RoleRoute>} />
             
             {/* Standalone Administrative Roles */}
             <Route 
@@ -134,6 +129,46 @@ function App() {
               element={
                 <RoleRoute allowedRoles={['HR', 'Manager', 'SuperAdmin']}>
                   <AdminEmployees />
+                </RoleRoute>
+              } 
+            />
+            <Route 
+              path="employee-detail/:employeeId" 
+              element={
+                <RoleRoute allowedRoles={['HR', 'Manager', 'SuperAdmin']}>
+                  <EmployeeDetail />
+                </RoleRoute>
+              } 
+            />
+            <Route 
+              path="manager-detail/:managerId" 
+              element={
+                <RoleRoute allowedRoles={['HR', 'SuperAdmin']}>
+                  <ManagerDetail />
+                </RoleRoute>
+              } 
+            />
+            <Route 
+              path="admin/departments" 
+              element={
+                <RoleRoute allowedRoles={['HR', 'SuperAdmin']}>
+                  <AdminDepartments />
+                </RoleRoute>
+              } 
+            />
+            <Route 
+              path="projects-sprints" 
+              element={
+                <RoleRoute allowedRoles={['HR', 'Manager', 'SuperAdmin']}>
+                  <ProjectsSprints />
+                </RoleRoute>
+              } 
+            />
+            <Route 
+              path="department-detail/:departmentId" 
+              element={
+                <RoleRoute allowedRoles={['HR', 'SuperAdmin']}>
+                  <DepartmentDetail />
                 </RoleRoute>
               } 
             />

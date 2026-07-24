@@ -98,28 +98,9 @@ const Training = () => {
         ))}
 
         {courses.length === 0 && (
-          <>
-            <article className="course-card">
-              <div className="course-cover"><span>FERRET LEARNING</span></div>
-              <div className="course-body">
-                <h3>Information Security Essentials</h3>
-                <p>Video · 45 min</p>
-                <div className="course-meta"><span>72% complete</span><span>In progress</span></div>
-                <div className="progress"><i style={{ width: '72%' }}></i></div>
-                <button className="btn primary full small course-btn" style={{ marginTop: '13px' }}>Continue Course</button>
-              </div>
-            </article>
-            <article className="course-card">
-              <div className="course-cover"><span>FERRET LEARNING</span></div>
-              <div className="course-body">
-                <h3>Ferret Code of Conduct</h3>
-                <p>Document + Quiz</p>
-                <div className="course-meta"><span>100% complete</span><span>Certificate</span></div>
-                <div className="progress"><i style={{ width: '100%' }}></i></div>
-                <button className="btn outline full small course-btn" style={{ marginTop: '13px' }}>View Certificate</button>
-              </div>
-            </article>
-          </>
+          <div style={{ gridColumn: '1 / -1', padding: '40px', textAlign: 'center', opacity: 0.7, background: '#fff', borderRadius: '14px', border: '1px solid var(--line)' }}>
+            No training courses assigned.
+          </div>
         )}
       </div>
     </div>

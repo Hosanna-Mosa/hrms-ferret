@@ -142,22 +142,7 @@ const Login = () => {
             <button className="btn primary full" type="submit" disabled={loading}>
               {loading ? 'Signing In...' : 'Sign In'}
             </button>
-            <button
-              className="btn google full"
-              type="button"
-              id="googleSso"
-              onClick={handleGoogleSSO}
-            >
-              <span>G</span> Continue with Google Workspace
-            </button>
           </form>
-          <div className="security-note">
-            <span>🔐</span>
-            <div>
-              <strong>Protected access</strong>
-              <small>2FA and SSO hooks are included for backend integration.</small>
-            </div>
-          </div>
           <div className="demo-box">
             <strong>Demo accounts (Click to fill)</strong>
             <p 

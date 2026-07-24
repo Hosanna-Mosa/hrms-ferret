@@ -27,6 +27,8 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
   const adminItems = [
     { page: 'admin/managers', label: 'Managers', icon: '♟', roles: ['HR', 'SuperAdmin'] },
     { page: 'admin/employees', label: 'Employees', icon: '♙', roles: ['HR', 'Manager', 'SuperAdmin'] },
+    { page: 'admin/departments', label: 'Departments', icon: '☷', roles: ['HR', 'SuperAdmin'] },
+    { page: 'projects-sprints', label: 'Projects & Sprints', icon: '☲', roles: ['HR', 'Manager', 'SuperAdmin'] },
   ];
 
   // Determine which items to display
@@ -42,12 +44,40 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       employeeItems[2], // Daily Updates
       employeeItems[3], // Leave
       employeeItems[4], // Tasks & Sprint
+      { page: 'projects-sprints', label: 'Projects & Sprints', icon: '☲' },
+      employeeItems[5], // Onboarding
+      employeeItems[6], // Offboarding
+      employeeItems[7], // Documents
       employeeItems[11], // My Profile
     ];
   } else if (role === 'HR') {
-    displayItems = adminItems.filter(item => item.roles.includes('HR'));
+    displayItems = [
+      employeeItems[0], // Dashboard
+      employeeItems[1], // Attendance
+      { page: 'admin/managers', label: 'Managers', icon: '♟' },
+      { page: 'admin/employees', label: 'Employees', icon: '♙' },
+      { page: 'admin/departments', label: 'Departments', icon: '☷' },
+      employeeItems[3], // Leave
+      { page: 'projects-sprints', label: 'Projects & Sprints', icon: '☲' },
+      employeeItems[5], // Onboarding
+      employeeItems[6], // Offboarding
+      employeeItems[7], // Documents
+      employeeItems[11], // My Profile
+    ];
   } else if (role === 'SuperAdmin') {
-    displayItems = [...employeeItems, ...adminItems];
+    displayItems = [
+      employeeItems[0], // Dashboard
+      employeeItems[1], // Attendance
+      { page: 'admin/managers', label: 'Managers', icon: '♟' },
+      { page: 'admin/employees', label: 'Employees', icon: '♙' },
+      { page: 'admin/departments', label: 'Departments', icon: '☷' },
+      employeeItems[3], // Leave
+      { page: 'projects-sprints', label: 'Projects & Sprints', icon: '☲' },
+      employeeItems[7], // Documents
+      employeeItems[8], // Announcements
+      employeeItems[9], // Performance
+      employeeItems[11], // My Profile
+    ];
   }
 
   return (

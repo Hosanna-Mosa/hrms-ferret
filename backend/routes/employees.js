@@ -225,4 +225,40 @@ router.post('/admin/employees/:id/deactivate', auth, role(['HR', 'SuperAdmin']),
   }
 });
 
+// GET /api/employees/:id
+router.get('/:id', auth, role(['HR', 'Manager', 'SuperAdmin']), async (req, res) => {
+  try {
+    const employee = await Employee.findById(req.params.id)
+      .populate({
+        path: 'user_id',
+        populate: { path: 'role_id' }
+      })
+      .populate('manager_id')
+      .exec();
+
+    if (!employee) {
+      return res.status(404).json({ message: 'Employee not found' });
+    }
+
+    if (req.user.role === 'Manager' && employee.manager_id) {
+      const mId = employee.manager_id._id || employee.manager_id;
+      if (mId.toString() !== req.user.employeeId.toString()) {
+        return res.status(403).json({ message: 'Access denied: Not your reportee' });
+      }
+    }
+
+    const responseData = {
+      ...employee.toObject(),
+      work_email: employee.user_id ? employee.user_id.work_email : '',
+      role_name: employee.user_id && employee.user_id.role_id ? employee.user_id.role_id.name : 'Employee',
+      manager_name: employee.manager_id ? employee.manager_id.full_name : ''
+    };
+
+    res.json(responseData);
+  } catch (error) {
+    console.error('Error fetching employee detail:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;

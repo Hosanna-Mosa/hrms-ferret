@@ -483,20 +483,9 @@ const Admin = () => {
             </div>
           ))}
           {roles.length === 0 && (
-            <>
-              <div className="role-row">
-                <div><b>HR Admin</b><small>Full employee and HR access</small></div>
-                <span>1 user</span>
-              </div>
-              <div className="role-row">
-                <div><b>Manager</b><small>Team approvals and reports</small></div>
-                <span>1 user</span>
-              </div>
-              <div className="role-row">
-                <div><b>Employee</b><small>Self-service employee access</small></div>
-                <span>4 users</span>
-              </div>
-            </>
+            <div style={{ padding: '20px', textAlign: 'center', fontSize: '11px', color: 'var(--muted)' }}>
+              No roles configured.
+            </div>
           )}
         </article>
       )}

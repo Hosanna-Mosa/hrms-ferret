@@ -23,7 +23,7 @@ export const AuthProvider = ({ children }) => {
           const empData = await meRes.json();
           setUser({
             id: empData.user_id,
-            employeeId: empData.id,
+            employeeId: empData._id,
             email: empData.work_email,
             role: empData.role_name,
             name: empData.full_name

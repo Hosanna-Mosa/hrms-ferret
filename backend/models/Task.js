@@ -15,6 +15,14 @@ const TaskSchema = new mongoose.Schema({
   sprint: {
     type: String
   },
+  project_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Project'
+  },
+  sprint_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Sprint'
+  },
   due_date: {
     type: Date
   },

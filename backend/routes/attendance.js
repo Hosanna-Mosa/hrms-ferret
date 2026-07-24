@@ -184,4 +184,24 @@ router.patch('/admin/attendance/corrections/:id', auth, role(['HR', 'Manager', '
   res.json({ message: 'Attendance correction request resolved.', status: 'approved' });
 });
 
+// GET /api/attendance/employee/:employeeId
+router.get('/employee/:employeeId', auth, role(['HR', 'Manager', 'SuperAdmin']), async (req, res) => {
+  try {
+    if (req.user.role === 'Manager') {
+      const Employee = require('../models/Employee');
+      const emp = await Employee.findById(req.params.employeeId).exec();
+      if (!emp || emp.manager_id.toString() !== req.user.employeeId.toString()) {
+        return res.status(403).json({ message: 'Access denied: Not your reportee' });
+      }
+    }
+    const history = await Attendance.find({ employee_id: req.params.employeeId })
+      .sort({ work_date: -1 })
+      .exec();
+    res.json(history);
+  } catch (error) {
+    console.error('Error fetching employee attendance logs:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;

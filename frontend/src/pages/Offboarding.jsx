@@ -1,15 +1,69 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { apiRequest } from '../utils/api';
 
 const Offboarding = () => {
   const [lwd, setLwd] = useState('');
   const [reason, setReason] = useState('Resignation');
   const [comments, setComments] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [checklist, setChecklist] = useState({
+    'Knowledge transfer completed': false,
+    'Company assets returned': false,
+    'System access revoked': false,
+    'Manager clearance': false,
+    'HR exit interview': false,
+    'Final settlement processed': false,
+    'Experience letter issued': false
+  });
 
-  const handleSubmit = (e) => {
+  useEffect(() => {
+    const fetchOffboarding = async () => {
+      try {
+        const res = await apiRequest('/api/offboarding/me');
+        if (res.ok) {
+          const data = await res.json();
+          if (data) {
+            setSubmitted(true);
+            setLwd(data.last_working_date ? data.last_working_date.split('T')[0] : '');
+            setReason(data.reason || 'Resignation');
+            setComments(data.comments || '');
+            if (data.checklist) {
+              setChecklist(prev => ({ ...prev, ...data.checklist }));
+            }
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchOffboarding();
+  }, []);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setSubmitted(true);
-    alert('Offboarding request submitted to manager and HR.');
+    try {
+      const res = await apiRequest('/api/offboarding', {
+        method: 'POST',
+        body: JSON.stringify({
+          last_working_date: lwd,
+          reason,
+          comments
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSubmitted(true);
+        if (data.checklist) {
+          setChecklist(prev => ({ ...prev, ...data.checklist }));
+        }
+        alert('Offboarding request submitted successfully. Managers and HR have been notified via email.');
+      } else {
+        const err = await res.json();
+        alert(err.message || 'Submission failed');
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   return (
@@ -84,13 +138,11 @@ const Offboarding = () => {
             </div>
           </div>
           <div className="checklist">
-            <label><input type="checkbox" disabled checked={submitted} /> Knowledge transfer completed</label>
-            <label><input type="checkbox" disabled /> Company assets returned</label>
-            <label><input type="checkbox" disabled /> System access revoked</label>
-            <label><input type="checkbox" disabled /> Manager clearance</label>
-            <label><input type="checkbox" disabled /> HR exit interview</label>
-            <label><input type="checkbox" disabled /> Final settlement processed</label>
-            <label><input type="checkbox" disabled /> Experience letter issued</label>
+            {Object.keys(checklist).map((item) => (
+              <label key={item}>
+                <input type="checkbox" disabled checked={checklist[item] || false} /> {item}
+              </label>
+            ))}
           </div>
         </article>
       </div>

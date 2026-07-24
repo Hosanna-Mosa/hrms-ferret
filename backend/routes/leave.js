@@ -23,6 +23,33 @@ router.post('/', auth, async (req, res) => {
       status: 'pending'
     });
 
+    // Send Email Notifications
+    try {
+      const { getNotificationRecipients, sendMail } = require('../services/emailService');
+      const emp = await Employee.findById(req.user.employeeId).exec();
+      const recipients = await getNotificationRecipients(req.user.employeeId);
+
+      if (recipients.length > 0) {
+        const subject = `Leave Request Submitted - ${emp.full_name}`;
+        const htmlContent = `
+          <h3>New Leave Request</h3>
+          <p><strong>Employee:</strong> ${emp.full_name} (${emp.employee_code})</p>
+          <p><strong>Leave Type:</strong> ${leave_type}</p>
+          <p><strong>Duration:</strong> ${new Date(start_date).toLocaleDateString()} to ${new Date(end_date).toLocaleDateString()}</p>
+          <p><strong>Reason:</strong> ${reason || 'No reason provided.'}</p>
+          <hr/>
+          <p>Please log in to the portal to review and approve/reject this request.</p>
+        `;
+        await sendMail({
+          to: recipients.join(','),
+          subject,
+          html: htmlContent
+        });
+      }
+    } catch (err) {
+      console.error('Failed to send leave notification email:', err);
+    }
+
     res.status(201).json(newLeave);
   } catch (error) {
     console.error('Error applying for leave:', error);
@@ -127,6 +154,25 @@ router.patch('/manager/:id', auth, role(['HR', 'Manager', 'SuperAdmin']), async 
     res.json(leave);
   } catch (error) {
     console.error('Error resolving leave request:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/leave/employee/:employeeId
+router.get('/employee/:employeeId', auth, role(['HR', 'Manager', 'SuperAdmin']), async (req, res) => {
+  try {
+    if (req.user.role === 'Manager') {
+      const emp = await Employee.findById(req.params.employeeId).exec();
+      if (!emp || emp.manager_id.toString() !== req.user.employeeId.toString()) {
+        return res.status(403).json({ message: 'Access denied: Not your reportee' });
+      }
+    }
+    const list = await Leave.find({ employee_id: req.params.employeeId })
+      .sort({ start_date: -1 })
+      .exec();
+    res.json(list);
+  } catch (error) {
+    console.error('Error fetching employee leaves:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

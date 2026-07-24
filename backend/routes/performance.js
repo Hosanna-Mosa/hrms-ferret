@@ -17,6 +17,20 @@ router.get('/me', auth, async (req, res) => {
   }
 });
 
+// GET /api/performance/all (HR/SuperAdmin company-wide review list)
+router.get('/all', auth, role(['HR', 'SuperAdmin']), async (req, res) => {
+  try {
+    const reviews = await Performance.find({})
+      .populate('employee_id')
+      .sort({ review_period: -1 })
+      .exec();
+    res.json(reviews);
+  } catch (error) {
+    console.error('Error fetching all performance reviews:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // POST /api/manager/performance/:employeeId (Post review)
 router.post('/manager/:employeeId', auth, role(['HR', 'Manager', 'SuperAdmin']), async (req, res) => {
   const empId = req.params.employeeId;

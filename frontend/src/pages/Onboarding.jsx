@@ -5,17 +5,17 @@ import { useAuth } from '../context/AuthContext';
 const Onboarding = () => {
   const { user } = useAuth();
   const [activeStep, setActiveStep] = useState('personal');
-  const [onboardPct, setOnboardPct] = useState('72%');
+  const [onboardPct, setOnboardPct] = useState('0%');
 
   // Personal state
-  const [fullName, setFullName] = useState('Uttej Yadala');
-  const [dob, setDob] = useState('1996-11-24');
-  const [phone, setPhone] = useState('+1 469 555 0188');
-  const [emergency, setEmergency] = useState('Surya Teja Yadala');
-  const [address, setAddress] = useState('Dallas, Texas, United States');
+  const [fullName, setFullName] = useState('');
+  const [dob, setDob] = useState('');
+  const [phone, setPhone] = useState('');
+  const [emergency, setEmergency] = useState('');
+  const [address, setAddress] = useState('');
 
   // Bank state
-  const [accHolder, setAccHolder] = useState('Uttej Yadala');
+  const [accHolder, setAccHolder] = useState('');
   const [bankName, setBankName] = useState('');
   const [accNum, setAccNum] = useState('');
   const [routingNum, setRoutingNum] = useState('');
@@ -35,20 +35,23 @@ const Onboarding = () => {
 
   const fetchProfileAndDocs = async () => {
     try {
+      let empData = null;
+      let docData = [];
+
       const res = await apiRequest('/api/employees/me');
       if (res.ok) {
-        const data = await res.json();
-        setFullName(data.full_name);
-        setPhone(data.phone || '');
-        setDob(data.date_of_birth ? data.date_of_birth.slice(0, 10) : '');
-        setAddress(data.address || '');
-        if (data.emergency_contact) {
-          setEmergency(data.emergency_contact.name || '');
+        empData = await res.json();
+        setFullName(empData.full_name || '');
+        setPhone(empData.phone || '');
+        setDob(empData.date_of_birth ? empData.date_of_birth.slice(0, 10) : '');
+        setAddress(empData.address || '');
+        if (empData.emergency_contact) {
+          setEmergency(empData.emergency_contact.name || '');
         }
 
-        if (data.profile_data?.bank) {
-          const bank = data.profile_data.bank;
-          setAccHolder(bank.holder || data.full_name);
+        if (empData.profile_data?.bank) {
+          const bank = empData.profile_data.bank;
+          setAccHolder(bank.holder || empData.full_name || '');
           setBankName(bank.name || '');
           setAccNum(bank.number || '');
           setRoutingNum(bank.routing || '');
@@ -57,9 +60,40 @@ const Onboarding = () => {
 
       const docRes = await apiRequest('/api/documents/me');
       if (docRes.ok) {
-        const docData = await docRes.json();
+        docData = await docRes.json();
         setUploadedDocs(docData);
       }
+
+      // Calculate dynamic progress percentage
+      let pct = 0;
+      if (empData) {
+        // Step 1: Personal Details
+        if (empData.phone && empData.address && empData.date_of_birth && empData.emergency_contact?.name) {
+          pct += 20;
+        }
+        // Step 3: Bank Details
+        if (empData.profile_data?.bank?.name && empData.profile_data?.bank?.number) {
+          pct += 20;
+        }
+      }
+      // Step 2: Documents
+      const reqUploads = ['Profile Photo', 'Aadhaar / Passport', 'PAN Card', 'Driving License', 'Education Certificates', 'Resume'];
+      const uploadedReqCount = docData.filter(d => reqUploads.includes(d.document_type)).length;
+      if (uploadedReqCount > 0) {
+        pct += Math.min(20, Math.round((uploadedReqCount / reqUploads.length) * 20));
+      }
+      // Step 4: Agreements
+      const agreementsUploaded = docData.filter(d => ['NDA', 'Employment Agreement'].includes(d.document_type)).length;
+      if (agreementsUploaded > 0) {
+        pct += Math.min(20, Math.round((agreementsUploaded / 2) * 20));
+      }
+      // Step 5: Policies
+      const allPoliciesChecked = Object.values(policiesCheck).every(v => v);
+      if (allPoliciesChecked) {
+        pct += 20;
+      }
+
+      setOnboardPct(`${pct}%`);
     } catch (e) {
       console.error(e);
     }
