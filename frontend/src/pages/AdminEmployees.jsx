@@ -22,6 +22,7 @@ const AdminEmployees = () => {
   const [newEmpDate, setNewEmpDate] = useState('');
   const [newEmpDesig, setNewEmpDesig] = useState('Software Development Engineer');
   const [selectedManagerId, setSelectedManagerId] = useState('');
+  const [newEmpPhoto, setNewEmpPhoto] = useState(null);
 
   const isManager = user?.role === 'Manager';
 
@@ -68,6 +69,21 @@ const AdminEmployees = () => {
         })
       });
       if (res.ok) {
+        const createdEmp = await res.json();
+        if (newEmpPhoto) {
+          const formData = new FormData();
+          formData.append('file', newEmpPhoto);
+          formData.append('document_type', 'Profile Photo');
+          formData.append('target_employee_id', createdEmp._id);
+          try {
+            await apiRequest('/api/documents/upload', {
+              method: 'POST',
+              body: formData
+            });
+          } catch (uploadErr) {
+            console.error('Profile photo upload failed:', uploadErr);
+          }
+        }
         fetchEmployees();
         setIsCreating(false);
         setNewEmpName('');
@@ -75,6 +91,7 @@ const AdminEmployees = () => {
         setNewEmpDate('');
         setNewEmpDesig('Software Development Engineer');
         setSelectedManagerId('');
+        setNewEmpPhoto(null);
         alert('Employee onboarding profile created and linked to manager successfully.');
       } else {
         const err = await res.json();
@@ -229,13 +246,22 @@ const AdminEmployees = () => {
                 </select>
               </label>
 
-              <label className="full-span">
+              <label>
                 Joining Date
                 <input
                   type="date"
                   required
                   value={newEmpDate}
                   onChange={(e) => setNewEmpDate(e.target.value)}
+                />
+              </label>
+
+              <label>
+                Profile Photo (Optional)
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setNewEmpPhoto(e.target.files[0])}
                 />
               </label>
             </div>
@@ -346,8 +372,22 @@ const AdminEmployees = () => {
                   >
                     <td><code>{emp.employee_code}</code></td>
                     <td>
-                      <div className="employee-cell">
-                        <span>{getInitials(emp.full_name)}</span>
+                      <div className="employee-cell" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {emp.profile_pic ? (
+                          <img 
+                            src={emp.profile_pic.startsWith('http') ? emp.profile_pic : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${emp.profile_pic}`} 
+                            alt={emp.full_name} 
+                            style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <svg viewBox="0 0 24 24" fill="none" style={{ width: '100%', height: '100%' }}>
+                              <rect width="24" height="24" fill="#233138"/>
+                              <circle cx="12" cy="9.5" r="4.5" fill="#aebac1"/>
+                              <path d="M12 16C7.58 16 4 19.58 4 24H20C20 19.58 16.42 16 12 16Z" fill="#aebac1"/>
+                            </svg>
+                          </div>
+                        )}
                         <div>
                           <b>{emp.full_name}</b>
                           <small>{emp.work_email}</small>

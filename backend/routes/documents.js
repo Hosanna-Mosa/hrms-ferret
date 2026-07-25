@@ -2,11 +2,13 @@ const express = require('express');
 const router = express.Router();
 const Document = require('../models/Document');
 const Onboarding = require('../models/Onboarding');
+const Employee = require('../models/Employee');
 const auth = require('../middleware/auth');
 const role = require('../middleware/role');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { isConfigured, uploadToCloudinary } = require('../services/cloudinary');
 
 // Configure Multer local storage
 const uploadDir = path.join(__dirname, '../uploads');
@@ -65,15 +67,44 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
     ? target_employee_id 
     : req.user.employeeId;
 
+  const localFilePath = path.join(uploadDir, req.file.filename);
+  let finalStorageKey = req.file.filename;
+
   try {
+    // If Cloudinary is configured, upload the file
+    if (isConfigured) {
+      try {
+        const cloudResult = await uploadToCloudinary(localFilePath);
+        if (cloudResult && cloudResult.secure_url) {
+          finalStorageKey = cloudResult.secure_url;
+          // Delete local physical file after successful cloud upload
+          fs.unlinkSync(localFilePath);
+        }
+      } catch (err) {
+        console.warn('Failed to upload to Cloudinary, keeping local file:', err);
+      }
+    }
+
     const newDoc = await Document.create({
       employee_id: targetEmpId,
       document_type: document_type || 'Uncategorized',
-      storage_key: req.file.filename,
+      storage_key: finalStorageKey,
       file_name: req.file.originalname,
       mime_type: req.file.mimetype,
       verification_status: 'pending'
     });
+
+    // If this is a Profile Photo, update the Employee profile_pic field
+    if (document_type === 'Profile Photo') {
+      const picUrl = isConfigured && finalStorageKey.startsWith('http')
+        ? finalStorageKey
+        : `/uploads/${req.file.filename}`;
+      
+      await Employee.findByIdAndUpdate(
+        targetEmpId,
+        { $set: { profile_pic: picUrl } }
+      ).exec();
+    }
 
     // Also update onboarding progress items if applicable
     if (document_type) {
@@ -108,6 +139,11 @@ router.get('/:id/download', auth, async (req, res) => {
     // Check auth permission
     if (req.user.role !== 'HR' && req.user.role !== 'SuperAdmin' && doc.employee_id.toString() !== req.user.employeeId.toString()) {
       return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // If storage_key is a URL (starts with http/https), redirect to the cloud file
+    if (doc.storage_key.startsWith('http://') || doc.storage_key.startsWith('https://')) {
+      return res.redirect(doc.storage_key);
     }
 
     const filePath = path.join(uploadDir, doc.storage_key);

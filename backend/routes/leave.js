@@ -151,6 +151,47 @@ router.patch('/manager/:id', auth, role(['HR', 'Manager', 'SuperAdmin']), async 
     leave.decision_at = new Date();
     await leave.save();
 
+    // Fetch details to send email
+    const employee = await Employee.findById(leave.employee_id).populate('user_id').exec();
+    const manager = await Employee.findById(req.user.employeeId).populate('user_id').exec();
+    if (employee && employee.user_id && employee.user_id.work_email) {
+      const { sendMail } = require('../services/emailService');
+      try {
+        await sendMail({
+          to: employee.user_id.work_email,
+          subject: `Leave Request Update: ${status.toUpperCase()}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; border: 1px solid #e1e3e6; padding: 24px; border-radius: 12px;">
+              <h3 style="color: ${status === 'approved' ? '#14885d' : '#e42335'}; margin-top: 0;">Hello, ${employee.full_name}</h3>
+              <p>Your leave request has been reviewed and <strong>${status}</strong> by <strong>${manager?.full_name || 'Manager'}</strong>.</p>
+              <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold; width: 120px;">Leave Type:</td>
+                  <td style="text-transform: capitalize;">${leave.leave_type}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold;">Date Range:</td>
+                  <td>${new Date(leave.start_date).toLocaleDateString()} to ${new Date(leave.end_date).toLocaleDateString()}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold;">Total Days:</td>
+                  <td>${leave.total_days} day(s)</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold;">Status:</td>
+                  <td><strong style="color: ${status === 'approved' ? '#14885d' : '#e42335'}; text-transform: uppercase;">${status}</strong></td>
+                </tr>
+              </table>
+              <hr style="border: 0; border-top: 1px solid #e1e3e6; margin: 20px 0;" />
+              <small style="color: #707683;">Ferret PeopleOS Notifications</small>
+            </div>
+          `
+        });
+      } catch (mailErr) {
+        console.error('Failed to send leave decision notification email:', mailErr);
+      }
+    }
+
     res.json(leave);
   } catch (error) {
     console.error('Error resolving leave request:', error);

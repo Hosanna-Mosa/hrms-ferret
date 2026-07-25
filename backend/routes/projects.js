@@ -8,7 +8,7 @@ const role = require('../middleware/role');
 router.get('/', auth, async (req, res) => {
   try {
     const projects = await Project.find()
-      .populate('lead_id', 'full_name employee_code work_email')
+      .populate('lead_id', 'full_name employee_code work_email profile_pic')
       .exec();
     res.json(projects);
   } catch (error) {
@@ -39,7 +39,7 @@ router.post('/', auth, role(['HR', 'SuperAdmin']), async (req, res) => {
     });
 
     const populated = await Project.findById(project._id)
-      .populate('lead_id', 'full_name employee_code work_email')
+      .populate('lead_id', 'full_name employee_code work_email profile_pic')
       .exec();
 
     res.status(201).json(populated);

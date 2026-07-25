@@ -16,8 +16,33 @@ const Attendance = () => {
   const [selectedDayInfo, setSelectedDayInfo] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Calendar events & holidays
-  const calendarEvents = {};
+  // Calendar events, holidays & news state
+  const [announcements, setAnnouncements] = useState([]);
+  const [meetings, setMeetings] = useState([]);
+
+  const fetchAnnouncements = async () => {
+    try {
+      const res = await apiRequest('/api/announcements');
+      if (res.ok) {
+        const data = await res.json();
+        setAnnouncements(data);
+      }
+    } catch (e) {
+      console.error('Error fetching announcements:', e);
+    }
+  };
+
+  const fetchMeetings = async () => {
+    try {
+      const res = await apiRequest('/api/meetings/me');
+      if (res.ok) {
+        const data = await res.json();
+        setMeetings(data);
+      }
+    } catch (e) {
+      console.error('Error fetching meetings:', e);
+    }
+  };
 
   const fetchAttendanceData = async () => {
     try {
@@ -68,6 +93,8 @@ const Attendance = () => {
 
   useEffect(() => {
     fetchAttendanceData();
+    fetchAnnouncements();
+    fetchMeetings();
 
     const timer = setInterval(() => {
       const n = new Date();
@@ -167,6 +194,80 @@ const Attendance = () => {
     const days = [];
     const daysInMonth = 31; // hardcoded July for prototype match
     
+    // Construct calendarEvents dynamically for the currentMonth
+    const calendarEvents = {};
+
+    // 1. Add Holidays
+    const holidays = {
+      '2026-07-04': [{ title: 'Independence Day', desc: 'National Holiday (US)', type: 'holiday' }],
+      '2026-07-17': [{ title: 'Company Day', desc: 'Ferret Foundation Day celebration', type: 'holiday' }],
+      '2026-08-15': [{ title: 'Independence Day', desc: 'National Holiday (India)', type: 'holiday' }]
+    };
+
+    Object.keys(holidays).forEach(dateKey => {
+      if (dateKey.startsWith(currentMonth)) {
+        const dayNum = parseInt(dateKey.slice(8, 10));
+        calendarEvents[dayNum] = [...(calendarEvents[dayNum] || []), ...holidays[dateKey]];
+      }
+    });
+
+    // 2. Add Meetings
+    // Daily Standup for every weekday of the month
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = new Date(2026, parseInt(currentMonth.slice(5, 7)) - 1, d);
+      const dayOfWeek = date.getDay();
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Mon-Fri
+        calendarEvents[d] = [
+          ...(calendarEvents[d] || []),
+          { title: 'Daily Standup', desc: 'Daily team sync at 10:00 AM', type: 'meeting' }
+        ];
+      }
+    }
+
+    // Special meetings
+    const specialMeetings = {
+      '2026-07-10': [{ title: 'Sprint 11 Retro', desc: 'Review of Sprint 11 achievements', type: 'meeting' }],
+      '2026-07-20': [{ title: 'Sprint 12 Planning', desc: 'Task delegation for Sprint 12', type: 'meeting' }],
+      '2026-07-24': [{ title: 'All-Hands Meeting', desc: 'Monthly company-wide review', type: 'meeting' }]
+    };
+
+    Object.keys(specialMeetings).forEach(dateKey => {
+      if (dateKey.startsWith(currentMonth)) {
+        const dayNum = parseInt(dateKey.slice(8, 10));
+        calendarEvents[dayNum] = [...(calendarEvents[dayNum] || []), ...specialMeetings[dateKey]];
+      }
+    });
+
+    // 3. Add News / Announcements
+    announcements.forEach(ann => {
+      const dateVal = ann.published_at || ann.createdAt;
+      if (dateVal) {
+        const dateStr = new Date(dateVal).toISOString().slice(0, 10);
+        if (dateStr.startsWith(currentMonth)) {
+          const dayNum = parseInt(dateStr.slice(8, 10));
+          calendarEvents[dayNum] = [
+            ...(calendarEvents[dayNum] || []),
+            { title: ann.title, desc: ann.body, type: 'news' }
+          ];
+        }
+      }
+    });
+
+    // 4. Add dynamic meetings scheduled by manager/admin
+    meetings.forEach(meeting => {
+      if (meeting.meeting_date && meeting.meeting_date.startsWith(currentMonth)) {
+        const dayNum = parseInt(meeting.meeting_date.slice(8, 10));
+        calendarEvents[dayNum] = [
+          ...(calendarEvents[dayNum] || []),
+          { 
+            title: meeting.title, 
+            desc: `${meeting.start_time} - ${meeting.end_time || '--:--'} (Organizer: ${meeting.manager_id?.full_name || 'Manager'})`, 
+            type: 'meeting' 
+          }
+        ];
+      }
+    });
+
     // Find calendar status maps
     const statusMap = {};
     history.forEach(s => {
@@ -200,7 +301,7 @@ const Attendance = () => {
       days.push({ 
         num: i, 
         className: cls,
-        event: calendarEvents[i] || null
+        events: calendarEvents[i] || []
       });
     }
     return days;
@@ -214,7 +315,7 @@ const Attendance = () => {
       dayNum: day.num,
       date: dateObj,
       record: rec,
-      event: day.event,
+      events: day.events,
       className: day.className
     });
     setIsModalOpen(true);
@@ -224,11 +325,12 @@ const Attendance = () => {
     const dayNum = parseInt(row.work_date.slice(8, 10));
     const rec = row;
     const dateObj = new Date(row.work_date);
+    const dayDay = calendarDays.find(d => d.num === dayNum);
     setSelectedDayInfo({
       dayNum,
       date: dateObj,
       record: rec,
-      event: calendarEvents[dayNum] || null,
+      events: dayDay ? dayDay.events : [],
       className: row.status === 'late' ? 'late' : (row.work_mode === 'wfh' ? 'wfh' : 'present')
     });
     setIsModalOpen(true);
@@ -420,25 +522,36 @@ const Attendance = () => {
                 onClick={() => handleDayClick(day)}
               >
                 <span style={{ fontSize: '11px' }}>{day.num}</span>
-                {day.event && (
+                {day.events && day.events.map((evt, idx) => (
                   <span 
-                    title={day.event.desc}
+                    key={idx}
+                    title={`${evt.type.toUpperCase()}: ${evt.desc}`}
                     style={{ 
                       fontSize: '6.5px', 
-                      lineHeight: '1', 
-                      background: 'rgba(0, 0, 0, 0.06)', 
-                      borderRadius: '3px', 
-                      padding: '1px 3px', 
-                      color: '#4c515a',
+                      lineHeight: '1.1', 
+                      background: evt.type === 'holiday' ? 'rgba(239, 68, 68, 0.12)' :
+                                  evt.type === 'meeting' ? 'rgba(59, 130, 246, 0.12)' :
+                                  'rgba(16, 185, 129, 0.12)', 
+                      borderLeft: evt.type === 'holiday' ? '2px solid var(--red)' :
+                                  evt.type === 'meeting' ? '2px solid var(--blue)' :
+                                  '2px solid var(--green)',
+                      borderRadius: '2px', 
+                      padding: '1px 2px', 
+                      color: evt.type === 'holiday' ? 'var(--red)' :
+                             evt.type === 'meeting' ? 'var(--blue)' :
+                             'var(--green)',
                       whiteSpace: 'nowrap',
-                      maxWidth: '90%',
+                      maxWidth: '95%',
                       overflow: 'hidden',
-                      textOverflow: 'ellipsis'
+                      textOverflow: 'ellipsis',
+                      display: 'block',
+                      width: '100%',
+                      textAlign: 'left'
                     }}
                   >
-                    {day.event.title}
+                    {evt.title}
                   </span>
-                )}
+                ))}
               </div>
             ))}
           </div>
@@ -558,12 +671,48 @@ const Attendance = () => {
               </div>
             </div>
 
-            {selectedDayInfo.event && (
-              <div style={{ background: '#f5f3ff', borderLeft: '3px solid #7c3aed', padding: '12px', borderRadius: '4px', marginBottom: '20px' }}>
-                <strong style={{ fontSize: '12px', display: 'block', color: '#7c3aed' }}>
-                  {selectedDayInfo.event.title}
-                </strong>
-                <span style={{ fontSize: '10px', color: '#4c515a' }}>{selectedDayInfo.event.desc}</span>
+            {selectedDayInfo.events && selectedDayInfo.events.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+                {selectedDayInfo.events.map((evt, idx) => (
+                  <div 
+                    key={idx} 
+                    style={{ 
+                      background: evt.type === 'holiday' ? '#fef2f2' :
+                                  evt.type === 'meeting' ? '#eff6ff' :
+                                  '#ecfdf5', 
+                      borderLeft: evt.type === 'holiday' ? '3px solid var(--red)' :
+                                  evt.type === 'meeting' ? '3px solid var(--blue)' :
+                                  '3px solid var(--green)', 
+                      padding: '10px 12px', 
+                      borderRadius: '4px' 
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                      <strong style={{ 
+                        fontSize: '12px', 
+                        color: evt.type === 'holiday' ? 'var(--red)' :
+                               evt.type === 'meeting' ? 'var(--blue)' :
+                               'var(--green)' 
+                      }}>
+                        {evt.title}
+                      </strong>
+                      <span style={{ 
+                        fontSize: '8px', 
+                        fontWeight: 'bold', 
+                        textTransform: 'uppercase',
+                        padding: '1px 4px',
+                        borderRadius: '3px',
+                        background: 'rgba(0,0,0,0.05)',
+                        color: evt.type === 'holiday' ? 'var(--red)' :
+                               evt.type === 'meeting' ? 'var(--blue)' :
+                               'var(--green)'
+                      }}>
+                        {evt.type}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '10px', color: 'var(--muted)' }}>{evt.desc}</span>
+                  </div>
+                ))}
               </div>
             )}
 

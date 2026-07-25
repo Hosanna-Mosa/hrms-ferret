@@ -158,6 +158,75 @@ router.post('/admin/employees', auth, role(['HR', 'SuperAdmin']), async (req, re
       });
     }
 
+    // Send onboarding welcome email to new employee/manager
+    const { sendMail } = require('../services/emailService');
+    try {
+      await sendMail({
+        to: work_email.toLowerCase(),
+        subject: `Welcome to Ferret Technologies - Account Activated`,
+        html: `
+          <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; border: 1px solid #e1e3e6; padding: 24px; border-radius: 12px;">
+            <h2 style="color: #e42335; margin-top: 0;">Welcome, ${full_name}!</h2>
+            <p>Your Ferret PeopleOS profile has been created successfully.</p>
+            <p>Here are your secure temporary credentials to log into the portal:</p>
+            <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+              <tr>
+                <td style="padding: 8px 0; font-weight: bold; width: 100px;">Portal URL:</td>
+                <td><a href="http://localhost:5173" style="color: #e42335;">http://localhost:5173</a></td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; font-weight: bold;">Work Email:</td>
+                <td><code>${work_email.toLowerCase()}</code></td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; font-weight: bold;">Password:</td>
+                <td><code>password123</code></td>
+              </tr>
+            </table>
+            <p style="color: #707683; font-size: 11px;">Please change your password immediately upon your first sign in.</p>
+            <hr style="border: 0; border-top: 1px solid #e1e3e6; margin: 20px 0;" />
+            <small style="color: #707683;">Ferret Operations & HR Administration Team</small>
+          </div>
+        `
+      });
+
+      // If assigned a manager, notify the manager
+      if (manager_id) {
+        const mgr = await Employee.findById(manager_id).populate('user_id').exec();
+        if (mgr && mgr.user_id && mgr.user_id.work_email) {
+          await sendMail({
+            to: mgr.user_id.work_email,
+            subject: `New Direct Report Assigned: ${full_name}`,
+            html: `
+              <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; border: 1px solid #e1e3e6; padding: 24px; border-radius: 12px;">
+                <h3 style="color: #12141a; margin-top: 0;">Hello, ${mgr.full_name}</h3>
+                <p>A new employee, <strong>${full_name}</strong>, has been onboarded and assigned to report to you as their manager.</p>
+                <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                  <tr>
+                    <td style="padding: 8px 0; font-weight: bold; width: 120px;">Employee Code:</td>
+                    <td><code>${employeeCode}</code></td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; font-weight: bold;">Designation:</td>
+                    <td>${designation || 'Software Development Engineer'}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; font-weight: bold;">Joining Date:</td>
+                    <td>${new Date(joining_date).toLocaleDateString()}</td>
+                  </tr>
+                </table>
+                <p>You can manage their sprints, review task updates, and schedule meetings directly from your Team Dashboard.</p>
+                <hr style="border: 0; border-top: 1px solid #e1e3e6; margin: 20px 0;" />
+                <small style="color: #707683;">Ferret PeopleOS notifications</small>
+              </div>
+            `
+          });
+        }
+      }
+    } catch (mailError) {
+      console.error('Failed to send onboarding welcome/manager emails:', mailError);
+    }
+
     res.status(201).json({
       ...newEmployee.toObject(),
       work_email,

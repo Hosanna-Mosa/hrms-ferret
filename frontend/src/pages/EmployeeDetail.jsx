@@ -15,6 +15,58 @@ const EmployeeDetail = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('tasks');
 
+  // Meetings States
+  const [meetings, setMeetings] = useState([]);
+  const [meetingTitle, setMeetingTitle] = useState('');
+  const [meetingDesc, setMeetingDesc] = useState('');
+  const [meetingDate, setMeetingDate] = useState(() => {
+    const today = new Date();
+    return today.toISOString().slice(0, 10);
+  });
+  const [startTime, setStartTime] = useState('10:00');
+  const [endTime, setEndTime] = useState('10:30');
+  const [showScheduleForm, setShowScheduleForm] = useState(false);
+
+  const fetchMeetings = async () => {
+    try {
+      const res = await apiRequest(`/api/meetings/employee/${employeeId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setMeetings(data);
+      }
+    } catch (err) {
+      console.error('Error fetching meetings:', err);
+    }
+  };
+
+  const handleScheduleMeeting = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await apiRequest(`/api/meetings/employee/${employeeId}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          title: meetingTitle,
+          description: meetingDesc,
+          meeting_date: meetingDate,
+          start_time: startTime,
+          end_time: endTime
+        })
+      });
+      if (res.ok) {
+        alert('Meeting scheduled successfully!');
+        setMeetingTitle('');
+        setMeetingDesc('');
+        setShowScheduleForm(false);
+        fetchMeetings();
+      } else {
+        const err = await res.json();
+        alert(err.message || 'Failed to schedule meeting');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   // Performance review states
   const [reviewPeriod, setReviewPeriod] = useState('Q3 2026');
   const [attScore, setAttScore] = useState(95);
@@ -107,6 +159,9 @@ const EmployeeDetail = () => {
           setTasks(taskData);
         }
 
+        // Fetch Meetings
+        await fetchMeetings();
+
       } catch (err) {
         console.error('Error fetching employee details:', err);
       } finally {
@@ -182,7 +237,21 @@ const EmployeeDetail = () => {
 
       <div className="profile-layout">
         <aside className="panel profile-card">
-          <div className="large-avatar">{getInitials(employee.full_name)}</div>
+          {employee.profile_pic ? (
+            <img 
+              src={employee.profile_pic.startsWith('http') ? employee.profile_pic : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${employee.profile_pic}`} 
+              alt={employee.full_name} 
+              style={{ width: '100px', height: '100px', borderRadius: '50%', objectFit: 'cover', marginBottom: '15px' }}
+            />
+          ) : (
+            <div className="large-avatar" style={{ overflow: 'hidden', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px', borderRadius: '50%' }}>
+              <svg viewBox="0 0 24 24" fill="none" style={{ width: '100%', height: '100%' }}>
+                <rect width="24" height="24" fill="#233138"/>
+                <circle cx="12" cy="9.5" r="4.5" fill="#aebac1"/>
+                <path d="M12 16C7.58 16 4 19.58 4 24H20C20 19.58 16.42 16 12 16Z" fill="#aebac1"/>
+              </svg>
+            </div>
+          )}
           <h2>{employee.full_name}</h2>
           <p>{employee.designation}</p>
           <span className={`pill ${employee.employment_status === 'active' ? 'success' : 'warning'}`} style={{ textTransform: 'capitalize', marginBottom: '10px' }}>
@@ -259,6 +328,7 @@ const EmployeeDetail = () => {
             <button className={activeTab === 'attendance' ? 'active' : ''} onClick={() => setActiveTab('attendance')}>Attendance History</button>
             <button className={activeTab === 'updates' ? 'active' : ''} onClick={() => setActiveTab('updates')}>Daily Task Updates</button>
             <button className={activeTab === 'leaves' ? 'active' : ''} onClick={() => setActiveTab('leaves')}>Leave History</button>
+            <button className={activeTab === 'meetings' ? 'active' : ''} onClick={() => setActiveTab('meetings')}>Meetings</button>
             <button className={activeTab === 'review' ? 'active' : ''} onClick={() => setActiveTab('review')}>Post Review</button>
           </div>
 
@@ -448,6 +518,128 @@ const EmployeeDetail = () => {
                     )}
                   </tbody>
                 </table>
+              </div>
+            </article>
+          )}
+
+          {activeTab === 'meetings' && (
+            <article className="panel active">
+              <div className="panel-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3>Scheduled Meetings ({meetings.length})</h3>
+                  <p>Meetings scheduled between you (manager) and this employee.</p>
+                </div>
+                <button 
+                  className="btn primary small" 
+                  onClick={() => setShowScheduleForm(!showScheduleForm)}
+                >
+                  {showScheduleForm ? 'Cancel' : 'Schedule Meeting'}
+                </button>
+              </div>
+
+              {showScheduleForm && (
+                <div style={{ border: '1px solid var(--line)', borderRadius: '10px', padding: '16px', background: '#fafbfc', marginBottom: '20px' }}>
+                  <h4 style={{ margin: '0 0 12px 0' }}>New Meeting</h4>
+                  <form onSubmit={handleScheduleMeeting}>
+                    <div className="form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <label style={{ gridColumn: '1 / -1' }}>
+                        Meeting Title
+                        <input 
+                          type="text" 
+                          required 
+                          placeholder="e.g. 1-on-1 Performance Check-in" 
+                          value={meetingTitle} 
+                          onChange={(e) => setMeetingTitle(e.target.value)} 
+                        />
+                      </label>
+                      <label style={{ gridColumn: '1 / -1' }}>
+                        Description
+                        <textarea 
+                          rows="2" 
+                          placeholder="List meeting objectives..." 
+                          value={meetingDesc} 
+                          onChange={(e) => setMeetingDesc(e.target.value)} 
+                        />
+                      </label>
+                      <label>
+                        Date
+                        <input 
+                          type="date" 
+                          required 
+                          value={meetingDate} 
+                          onChange={(e) => setMeetingDate(e.target.value)} 
+                        />
+                      </label>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <label style={{ flex: 1 }}>
+                          Start Time
+                          <input 
+                            type="time" 
+                            required 
+                            value={startTime} 
+                            onChange={(e) => setStartTime(e.target.value)} 
+                          />
+                        </label>
+                        <label style={{ flex: 1 }}>
+                          End Time
+                          <input 
+                            type="time" 
+                            required 
+                            value={endTime} 
+                            onChange={(e) => setEndTime(e.target.value)} 
+                          />
+                        </label>
+                      </div>
+                    </div>
+                    <button type="submit" className="btn primary" style={{ marginTop: '15px' }}>
+                      Create Meeting
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {meetings.map((meeting) => (
+                  <div 
+                    key={meeting._id} 
+                    style={{ 
+                      border: '1px solid var(--line)', 
+                      borderRadius: '10px', 
+                      padding: '16px', 
+                      background: '#fff',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span className="pill success" style={{ textTransform: 'uppercase', fontSize: '9px' }}>
+                        Upcoming Sync
+                      </span>
+                      <strong style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                        {new Date(meeting.meeting_date).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                      </strong>
+                    </div>
+                    
+                    <h4 style={{ margin: '0 0 6px 0', fontSize: '14px', color: 'var(--ink)' }}>{meeting.title}</h4>
+                    {meeting.description && (
+                      <p style={{ margin: '0 0 10px 0', fontSize: '11px', color: 'var(--muted)' }}>{meeting.description}</p>
+                    )}
+                    
+                    <div style={{ display: 'flex', gap: '15px', borderTop: '1px solid var(--line)', paddingTop: '10px', fontSize: '11px', color: 'var(--muted)' }}>
+                      <div>
+                        Time: <strong style={{ color: 'var(--ink)' }}>{meeting.start_time} - {meeting.end_time || '--:--'}</strong>
+                      </div>
+                      <div>
+                        Organizer: <strong style={{ color: 'var(--ink)' }}>{meeting.manager_id?.full_name || 'Manager'}</strong>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {meetings.length === 0 && (
+                  <div style={{ padding: '30px', textAlign: 'center', opacity: 0.7, border: '1px solid var(--line)', borderRadius: '10px' }}>
+                    No meetings scheduled yet.
+                  </div>
+                )}
               </div>
             </article>
           )}

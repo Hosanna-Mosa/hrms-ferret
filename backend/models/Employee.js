@@ -58,6 +58,9 @@ const EmployeeSchema = new mongoose.Schema({
     type: String,
     default: 'remote'
   },
+  profile_pic: {
+    type: String
+  },
   profile_data: {
     type: mongoose.Schema.Types.Mixed,
     default: {}

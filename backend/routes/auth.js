@@ -78,7 +78,8 @@ router.post('/login', async (req, res) => {
         employeeId: employee ? employee._id : null,
         email: user.work_email,
         role: user.role_id ? user.role_id.name : 'Employee',
-        name: employee ? employee.full_name : 'User'
+        name: employee ? employee.full_name : 'User',
+        profile_pic: employee ? employee.profile_pic : null
       }
     });
 

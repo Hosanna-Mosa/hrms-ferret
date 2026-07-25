@@ -43,6 +43,7 @@ app.use('/api/offboarding', require('./routes/offboarding'));
 app.use('/api/departments', require('./routes/departments'));
 app.use('/api/projects', require('./routes/projects'));
 app.use('/api/sprints', require('./routes/sprints'));
+app.use('/api/meetings', require('./routes/meetings'));
 
 // Simple index test endpoint
 app.get('/api/health', (req, res) => {

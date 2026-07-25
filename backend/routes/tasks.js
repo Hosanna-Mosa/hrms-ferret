@@ -24,7 +24,7 @@ router.get('/me', auth, async (req, res) => {
 
 // POST /api/tasks (Create a task, internal)
 router.post('/', auth, async (req, res) => {
-  const { title, sprint, due_date, story_points, status, priority, employee_id, project_id, sprint_id } = req.body;
+  const { title, description, sprint, due_date, story_points, status, priority, employee_id, project_id, sprint_id } = req.body;
   try {
     const count = await Task.countDocuments({});
     const key = `FER-${100 + count + 1}`;
@@ -37,6 +37,7 @@ router.post('/', auth, async (req, res) => {
       external_key: key,
       employee_id: assignedEmpId,
       title,
+      description,
       sprint: sprint || 'Sprint 12',
       project_id: project_id || null,
       sprint_id: sprint_id || null,
@@ -46,6 +47,52 @@ router.post('/', auth, async (req, res) => {
       priority: priority || 'medium',
       external_source: 'internal'
     });
+
+    // Fetch details to send email
+    const Employee = require('../models/Employee');
+    const employee = await Employee.findById(assignedEmpId).populate('user_id').exec();
+    const manager = await Employee.findById(req.user.employeeId).populate('user_id').exec();
+    if (employee && employee.user_id && employee.user_id.work_email && req.user.employeeId !== assignedEmpId.toString()) {
+      const { sendMail } = require('../services/emailService');
+      try {
+        await sendMail({
+          to: employee.user_id.work_email,
+          subject: `New Task Assigned: ${title}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; border: 1px solid #e1e3e6; padding: 24px; border-radius: 12px;">
+              <h3 style="color: #e42335; margin-top: 0;">Hello, ${employee.full_name}</h3>
+              <p>A new task has been assigned to you by <strong>${manager?.full_name || 'Manager'}</strong>.</p>
+              <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold; width: 120px;">Task Key:</td>
+                  <td><code>${key}</code></td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold;">Title:</td>
+                  <td><strong>${title}</strong></td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold;">Priority:</td>
+                  <td><span style="text-transform: uppercase; font-size: 10px; font-weight: bold;">${priority || 'medium'}</span></td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold;">Story Points:</td>
+                  <td>${story_points || 3} SP</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold;">Due Date:</td>
+                  <td>${due_date ? new Date(due_date).toLocaleDateString() : 'No due date'}</td>
+                </tr>
+              </table>
+              <hr style="border: 0; border-top: 1px solid #e1e3e6; margin: 20px 0;" />
+              <small style="color: #707683;">Ferret PeopleOS Notifications</small>
+            </div>
+          `
+        });
+      } catch (mailErr) {
+        console.error('Failed to send task assignment email:', mailErr);
+      }
+    }
 
     res.status(201).json(newTask);
   } catch (error) {
@@ -57,7 +104,7 @@ router.post('/', auth, async (req, res) => {
 // PATCH /api/tasks/:id (Update task status or properties)
 router.patch('/:id', auth, async (req, res) => {
   const taskId = req.params.id;
-  const { status, title, priority, story_points, due_date } = req.body;
+  const { status, title, description, priority, story_points, due_date } = req.body;
   if (status === 'done') {
     return res.status(403).json({ message: 'Forbidden: Only managers can approve tasks to Done' });
   }
@@ -69,6 +116,7 @@ router.patch('/:id', auth, async (req, res) => {
         $set: {
           status,
           title,
+          description,
           priority,
           story_points,
           due_date: due_date ? new Date(due_date) : undefined
@@ -160,7 +208,7 @@ router.get('/manager/all', auth, role(['HR', 'Manager', 'SuperAdmin']), async (r
 // PATCH /api/tasks/manager/:id (Manager updating status/details of a reportee's task)
 router.patch('/manager/:id', auth, role(['HR', 'Manager', 'SuperAdmin']), async (req, res) => {
   const taskId = req.params.id;
-  const { status, title, priority, story_points, due_date } = req.body;
+  const { status, title, description, priority, story_points, due_date } = req.body;
   try {
     if (req.user.role === 'Manager') {
       const Employee = require('../models/Employee');
@@ -176,6 +224,7 @@ router.patch('/manager/:id', auth, role(['HR', 'Manager', 'SuperAdmin']), async 
         $set: {
           status,
           title,
+          description,
           priority,
           story_points,
           due_date: due_date ? new Date(due_date) : undefined
@@ -183,6 +232,52 @@ router.patch('/manager/:id', auth, role(['HR', 'Manager', 'SuperAdmin']), async 
       },
       { new: true }
     );
+    // Fetch details to send email
+    const Employee = require('../models/Employee');
+    const employee = await Employee.findById(updated.employee_id).populate('user_id').exec();
+    const manager = await Employee.findById(req.user.employeeId).populate('user_id').exec();
+    if (employee && employee.user_id && employee.user_id.work_email && req.user.employeeId !== employee._id.toString()) {
+      const { sendMail } = require('../services/emailService');
+      try {
+        await sendMail({
+          to: employee.user_id.work_email,
+          subject: `Task Updated: ${updated.title}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; border: 1px solid #e1e3e6; padding: 24px; border-radius: 12px;">
+              <h3 style="color: #12141a; margin-top: 0;">Hello, ${employee.full_name}</h3>
+              <p>Your task has been updated by <strong>${manager?.full_name || 'Manager'}</strong>.</p>
+              <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold; width: 120px;">Task Key:</td>
+                  <td><code>${updated.external_key}</code></td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold;">Title:</td>
+                  <td><strong>${updated.title}</strong></td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold;">Status:</td>
+                  <td><strong style="color: #2e65d4; text-transform: uppercase;">${updated.status}</strong></td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold;">Priority:</td>
+                  <td><span style="text-transform: uppercase; font-size: 10px; font-weight: bold;">${updated.priority}</span></td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold;">Story Points:</td>
+                  <td>${updated.story_points} SP</td>
+                </tr>
+              </table>
+              <hr style="border: 0; border-top: 1px solid #e1e3e6; margin: 20px 0;" />
+              <small style="color: #707683;">Ferret PeopleOS Notifications</small>
+            </div>
+          `
+        });
+      } catch (mailErr) {
+        console.error('Failed to send task update email:', mailErr);
+      }
+    }
+
     res.json(updated);
   } catch (error) {
     console.error('Error updating reportee task:', error);
