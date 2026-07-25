@@ -19,10 +19,24 @@ const TasksSprint = () => {
   // Create Task Modal States
   const [modalOpen, setModalOpen] = useState(false);
   const [taskTitle, setTaskTitle] = useState('');
+  const [taskDescription, setTaskDescription] = useState('');
   const [assignedEmployeeId, setAssignedEmployeeId] = useState('');
   const [storyPoints, setStoryPoints] = useState(3);
   const [priority, setPriority] = useState('medium');
-  const [dueDate, setDueDate] = useState('');
+  const [dueDate, setDueDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  });
+
+  // Task Details Modal States
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState(null);
+
+  const handleOpenDetail = (task) => {
+    setSelectedTask(task);
+    setDetailModalOpen(true);
+  };
 
   const isManager = user?.role === 'Manager';
   const canApproveToDone = user && ['Manager', 'HR', 'SuperAdmin'].includes(user.role);
@@ -163,6 +177,7 @@ const TasksSprint = () => {
         method: 'POST',
         body: JSON.stringify({
           title: taskTitle,
+          description: taskDescription,
           employee_id: assignedEmployeeId || undefined,
           story_points: storyPoints,
           priority: priority,
@@ -176,6 +191,7 @@ const TasksSprint = () => {
         fetchTasksAndSprint();
         setModalOpen(false);
         setTaskTitle('');
+        setTaskDescription('');
         setAssignedEmployeeId('');
         setStoryPoints(3);
         setPriority('medium');
@@ -224,9 +240,14 @@ const TasksSprint = () => {
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
           <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--muted)' }}>Sprint:</span>
           <select value={selectedSprintId} onChange={(e) => setSelectedSprintId(e.target.value)} style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--line)', background: '#fff', fontSize: '13px' }}>
-            {sprints.map(s => (
-              <option key={s._id} value={s._id}>{s.name} ({s.status})</option>
-            ))}
+            {sprints.map(s => {
+              const dueDateStr = s.end_date ? new Date(s.end_date).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+              return (
+                <option key={s._id} value={s._id}>
+                  {s.name} ({s.status}){dueDateStr ? ` - Due: ${dueDateStr}` : ''}
+                </option>
+              );
+            })}
             {sprints.length === 0 && <option value="">-- Plan Sprint First --</option>}
           </select>
         </div>
@@ -261,9 +282,17 @@ const TasksSprint = () => {
 
       <div className="sprint-header panel">
         <div>
-          <span>SPRINT 12</span>
-          <h3>Employee Experience MVP</h3>
-          <p>Jul 13 – Jul 26 · {sprint.completed_points} / {sprint.total_points} points completed</p>
+          <span>{sprint.sprint?.toUpperCase() || 'SPRINT'}</span>
+          <h3>{projects.find(p => p._id === selectedProjectId)?.name || 'Project Sprint'}</h3>
+          <p>
+            {(() => {
+              const active = sprints.find(s => s._id === selectedSprintId);
+              if (!active) return 'No dates';
+              const startStr = active.start_date ? new Date(active.start_date).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+              const endStr = active.end_date ? new Date(active.end_date).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+              return `${startStr} – ${endStr}`;
+            })()} · {sprint.completed_points} / {sprint.total_points} points completed
+          </p>
         </div>
         <div className="sprint-progress">
           <strong>{sprintPct}%</strong>
@@ -284,7 +313,12 @@ const TasksSprint = () => {
                   <b>{colTasks.length}</b>
                 </div>
                 {colTasks.map(t => (
-                  <div className={`task-card ${col.key === 'done' ? 'done' : ''}`} key={t._id}>
+                  <div 
+                    className={`task-card ${col.key === 'done' ? 'done' : ''}`} 
+                    key={t._id}
+                    onClick={() => handleOpenDetail(t)}
+                    style={{ cursor: 'pointer' }}
+                  >
                     <span className={`priority ${getPriorityClass(t.priority)}`}>
                       {t.priority.toUpperCase()}
                     </span>
@@ -300,12 +334,15 @@ const TasksSprint = () => {
                       )}
                     </div>
                     {/* Quick Transition Buttons */}
-                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
                       {col.key !== 'todo' && (
                         <button 
                           className="btn outline small" 
                           style={{ padding: '2px 5px', fontSize: '8px' }}
-                          onClick={() => handleStatusChange(t._id, col.key === 'in progress' ? 'todo' : col.key === 'review' ? 'in progress' : 'review')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStatusChange(t._id, col.key === 'in progress' ? 'todo' : col.key === 'review' ? 'in progress' : 'review');
+                          }}
                         >
                           ◀
                         </button>
@@ -314,7 +351,10 @@ const TasksSprint = () => {
                         <button 
                           className="btn primary small" 
                           style={{ padding: '2px 5px', fontSize: '8px' }}
-                          onClick={() => handleStatusChange(t._id, col.key === 'todo' ? 'in progress' : col.key === 'in progress' ? 'review' : 'done')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStatusChange(t._id, col.key === 'todo' ? 'in progress' : col.key === 'in progress' ? 'review' : 'done');
+                          }}
                         >
                           ▶
                         </button>
@@ -343,7 +383,12 @@ const TasksSprint = () => {
               </thead>
               <tbody>
                 {tasks.map(t => (
-                  <tr key={t._id}>
+                  <tr 
+                    key={t._id}
+                    onClick={() => handleOpenDetail(t)}
+                    style={{ cursor: 'pointer' }}
+                    title="Click to view details"
+                  >
                     <td>{t.external_key}</td>
                     <td>{t.title}</td>
                     {isManager && <td><b>{t.full_name || 'Team SDE'}</b></td>}
@@ -353,7 +398,7 @@ const TasksSprint = () => {
                         {t.priority.toUpperCase()}
                       </span>
                     </td>
-                    <td>
+                    <td onClick={(e) => e.stopPropagation()}>
                       <select 
                         value={t.status} 
                         onChange={(e) => handleStatusChange(t._id, e.target.value)}
@@ -388,6 +433,19 @@ const TasksSprint = () => {
                 placeholder="Describe the task or ticket details"
                 value={taskTitle}
                 onChange={(e) => setTaskTitle(e.target.value)}
+              />
+            </label>
+          </div>
+
+          <div className="form-group" style={{ marginBottom: '15px' }}>
+            <label style={{ margin: 0 }}>
+              Description
+              <textarea
+                placeholder="Enter detailed description of the task"
+                value={taskDescription}
+                onChange={(e) => setTaskDescription(e.target.value)}
+                rows="3"
+                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fff', fontSize: '13px', marginTop: '5px' }}
               />
             </label>
           </div>
@@ -444,12 +502,92 @@ const TasksSprint = () => {
                 onChange={(e) => setDueDate(e.target.value)}
               />
             </label>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+              <button
+                type="button"
+                className="btn outline small"
+                style={{ padding: '4px 8px', fontSize: '10px', minWidth: 'auto', height: 'auto', lineHeight: 'normal' }}
+                onClick={() => {
+                  const d = new Date();
+                  d.setDate(d.getDate() + 1);
+                  setDueDate(d.toISOString().slice(0, 10));
+                }}
+              >
+                Tomorrow (+1d)
+              </button>
+              <button
+                type="button"
+                className="btn outline small"
+                style={{ padding: '4px 8px', fontSize: '10px', minWidth: 'auto', height: 'auto', lineHeight: 'normal' }}
+                onClick={() => {
+                  const d = new Date();
+                  d.setDate(d.getDate() + 2);
+                  setDueDate(d.toISOString().slice(0, 10));
+                }}
+              >
+                In 2 Days (+2d)
+              </button>
+            </div>
           </div>
 
           <button className="btn primary full" type="submit">
             Create & Assign Task
           </button>
         </form>
+      </Modal>
+
+      {/* View Task Details Modal */}
+      <Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>
+        {selectedTask && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '1px solid var(--line)', paddingBottom: '10px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--muted)' }}>
+                {selectedTask.external_key} · {sprint.sprint}
+              </span>
+              <span className={`priority ${getPriorityClass(selectedTask.priority)}`}>
+                {selectedTask.priority.toUpperCase()}
+              </span>
+            </div>
+            
+            <h2 style={{ fontSize: '20px', marginBottom: '10px' }}>{selectedTask.title}</h2>
+            
+            <div style={{ marginBottom: '20px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+              <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '5px' }}>Description</h4>
+              <p style={{ fontSize: '13px', margin: 0, whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>
+                {selectedTask.description || 'No description provided.'}
+              </p>
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '20px', fontSize: '12px' }}>
+              <div>
+                <strong style={{ color: 'var(--muted)' }}>Assignee:</strong>
+                <span style={{ marginLeft: '5px', fontWeight: 'bold' }}>{selectedTask.full_name || (isManager ? 'Team SDE' : user?.name)}</span>
+              </div>
+              <div>
+                <strong style={{ color: 'var(--muted)' }}>Story Points:</strong>
+                <span style={{ marginLeft: '5px', fontWeight: 'bold' }}>{selectedTask.story_points} pts</span>
+              </div>
+              <div>
+                <strong style={{ color: 'var(--muted)' }}>Status:</strong>
+                <span className={`pill success`} style={{ marginLeft: '5px', textTransform: 'uppercase', fontSize: '8px', verticalAlign: 'middle' }}>
+                  {selectedTask.status}
+                </span>
+              </div>
+              <div>
+                <strong style={{ color: 'var(--muted)' }}>Due Date:</strong>
+                <span style={{ marginLeft: '5px', fontWeight: 'bold' }}>
+                  {selectedTask.due_date ? new Date(selectedTask.due_date).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' }) : '—'}
+                </span>
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--line)', paddingTop: '15px' }}>
+              <button className="btn outline" onClick={() => setDetailModalOpen(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

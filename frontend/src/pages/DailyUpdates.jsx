@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiRequest } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import Modal from '../components/Modal';
 
 const DailyUpdates = () => {
   const { user } = useAuth();
@@ -13,6 +14,14 @@ const DailyUpdates = () => {
   const [blocked, setBlocked] = useState('');
   const [tomorrowPlan, setTomorrowPlan] = useState('');
   const [statusText, setStatusText] = useState('Not submitted');
+
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [selectedUpdate, setSelectedUpdate] = useState(null);
+
+  const handleOpenDetail = (update) => {
+    setSelectedUpdate(update);
+    setDetailModalOpen(true);
+  };
 
   const isManager = user?.role === 'Manager';
 
@@ -90,7 +99,6 @@ const DailyUpdates = () => {
         method: 'POST',
         body: JSON.stringify({
           work_date: date,
-          hours_worked: hours,
           todays_tasks: todaysTasks,
           completed: completed,
           in_progress: inProgress,
@@ -264,26 +272,14 @@ const DailyUpdates = () => {
       <div className="grid form-layout">
         <article className="panel">
           <form id="dailyForm" onSubmit={handleSubmit}>
-            <div className="form-grid">
-              <label>
+            <div className="form-group" style={{ marginBottom: '15px' }}>
+              <label style={{ margin: 0 }}>
                 Date
                 <input 
                   type="date" 
                   value={date} 
                   max={maxDate}
                   onChange={(e) => setDate(e.target.value)} 
-                  required 
-                />
-              </label>
-              <label>
-                Hours Worked
-                <input 
-                  type="number" 
-                  min="0" 
-                  max="24" 
-                  step=".5" 
-                  value={hours} 
-                  onChange={(e) => setHours(parseFloat(e.target.value))} 
                   required 
                 />
               </label>
@@ -373,6 +369,131 @@ const DailyUpdates = () => {
           )}
         </aside>
       </div>
+
+      <div style={{ marginTop: '24px' }}>
+        <article className="panel table-panel active">
+          <div className="panel-head pad">
+            <div>
+              <h3>Daily Updates History ({updates.length})</h3>
+              <p>Your previous daily work logs and their approval status. Click any row to view full details.</p>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table style={{ minWidth: 'auto' }}>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {updates.map((u) => (
+                  <tr 
+                    key={u._id}
+                    onClick={() => handleOpenDetail(u)}
+                    style={{ cursor: 'pointer' }}
+                    title="Click to view details"
+                  >
+                    <td>
+                      <b>{new Date(u.work_date).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</b>
+                    </td>
+                    <td>
+                      <span className={`pill ${
+                        u.manager_status === 'approved' ? 'success' : 
+                        u.manager_status === 'pending' ? 'warning' : 'danger'
+                      }`}>
+                        {u.manager_status.toUpperCase()}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {updates.length === 0 && (
+                  <tr>
+                    <td colSpan="2" style={{ textAlign: 'center', opacity: 0.7, padding: '30px' }}>
+                      No daily updates submitted yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+
+      {/* View Daily Update Details Modal */}
+      <Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>
+        {selectedUpdate && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '1px solid var(--line)', paddingBottom: '10px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--muted)' }}>
+                DAILY WORK UPDATE
+              </span>
+              <span className={`pill ${
+                selectedUpdate.manager_status === 'approved' ? 'success' : 
+                selectedUpdate.manager_status === 'pending' ? 'warning' : 'danger'
+              }`}>
+                {selectedUpdate.manager_status.toUpperCase()}
+              </span>
+            </div>
+            
+            <h2 style={{ fontSize: '20px', marginBottom: '18px' }}>
+              {new Date(selectedUpdate.work_date).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+            </h2>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+                <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '5px' }}>Today's Tasks</h4>
+                <p style={{ fontSize: '12px', margin: 0, whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>
+                  {selectedUpdate.todays_tasks || 'None'}
+                </p>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+                <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '5px' }}>Completed</h4>
+                <p style={{ fontSize: '12px', margin: 0, whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>
+                  {selectedUpdate.completed || 'None'}
+                </p>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+                <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '5px' }}>In Progress</h4>
+                <p style={{ fontSize: '12px', margin: 0, whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>
+                  {selectedUpdate.in_progress || 'None'}
+                </p>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+                <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '5px' }}>Blocked</h4>
+                <p style={{ fontSize: '12px', margin: 0, whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>
+                  {selectedUpdate.blocked || 'None'}
+                </p>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+                <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '5px' }}>Tomorrow Plan</h4>
+                <p style={{ fontSize: '12px', margin: 0, whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>
+                  {selectedUpdate.tomorrow_plan || 'None'}
+                </p>
+              </div>
+
+              {selectedUpdate.manager_comment && (
+                <div style={{ background: '#fff0f2', padding: '12px', borderRadius: '8px', border: '1px solid var(--red)' }}>
+                  <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--red)', marginBottom: '5px' }}>Manager Feedback</h4>
+                  <p style={{ fontSize: '12px', margin: 0, whiteSpace: 'pre-wrap', color: 'var(--red)', fontWeight: 'bold' }}>
+                    {selectedUpdate.manager_comment}
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--line)', paddingTop: '15px' }}>
+              <button className="btn outline" onClick={() => setDetailModalOpen(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

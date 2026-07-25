@@ -16,6 +16,7 @@ const AdminManagers = () => {
   const [newMgrDate, setNewMgrDate] = useState('');
   const [newMgrDesig, setNewMgrDesig] = useState('Project Manager');
   const [newMgrRole, setNewMgrRole] = useState('Manager');
+  const [newMgrPhoto, setNewMgrPhoto] = useState(null);
 
   const fetchManagers = async () => {
     setLoading(true);
@@ -52,6 +53,21 @@ const AdminManagers = () => {
         })
       });
       if (res.ok) {
+        const createdMgr = await res.json();
+        if (newMgrPhoto) {
+          const formData = new FormData();
+          formData.append('file', newMgrPhoto);
+          formData.append('document_type', 'Profile Photo');
+          formData.append('target_employee_id', createdMgr._id);
+          try {
+            await apiRequest('/api/documents/upload', {
+              method: 'POST',
+              body: formData
+            });
+          } catch (uploadErr) {
+            console.error('Profile photo upload failed:', uploadErr);
+          }
+        }
         fetchManagers();
         setIsCreating(false);
         setNewMgrName('');
@@ -59,6 +75,7 @@ const AdminManagers = () => {
         setNewMgrDate('');
         setNewMgrDesig('Project Manager');
         setNewMgrRole('Manager');
+        setNewMgrPhoto(null);
         alert('Manager onboarding profile created successfully.');
       } else {
         const err = await res.json();
@@ -188,6 +205,15 @@ const AdminManagers = () => {
                   onChange={(e) => setNewMgrDate(e.target.value)}
                 />
               </label>
+
+              <label>
+                Profile Photo (Optional)
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setNewMgrPhoto(e.target.files[0])}
+                />
+              </label>
             </div>
 
             <button type="submit" className="btn primary" style={{ marginTop: '20px' }}>
@@ -280,8 +306,22 @@ const AdminManagers = () => {
                   >
                     <td><code>{m.employee_code}</code></td>
                     <td>
-                      <div className="employee-cell">
-                        <span>{getInitials(m.full_name)}</span>
+                      <div className="employee-cell" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {m.profile_pic ? (
+                          <img 
+                            src={m.profile_pic.startsWith('http') ? m.profile_pic : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${m.profile_pic}`} 
+                            alt={m.full_name} 
+                            style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <svg viewBox="0 0 24 24" fill="none" style={{ width: '100%', height: '100%' }}>
+                              <rect width="24" height="24" fill="#233138"/>
+                              <circle cx="12" cy="9.5" r="4.5" fill="#aebac1"/>
+                              <path d="M12 16C7.58 16 4 19.58 4 24H20C20 19.58 16.42 16 12 16Z" fill="#aebac1"/>
+                            </svg>
+                          </div>
+                        )}
                         <div>
                           <b>{m.full_name} {m.role_name === 'HR' && <span className="pill warning" style={{ fontSize: '9px', padding: '2px 4px', marginLeft: '6px', textTransform: 'uppercase' }}>HR</span>}</b>
                           <small>{m.department}</small>

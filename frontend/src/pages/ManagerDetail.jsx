@@ -11,6 +11,7 @@ const ManagerDetail = () => {
   const [allEmployees, setAllEmployees] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [leaves, setLeaves] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('reports');
 
@@ -44,6 +45,13 @@ const ManagerDetail = () => {
         if (leaveRes.ok) {
           const leaveData = await leaveRes.json();
           setLeaves(leaveData);
+        }
+
+        // Fetch Projects
+        const projRes = await apiRequest('/api/projects');
+        if (projRes.ok) {
+          const projData = await projRes.json();
+          setProjects(projData);
         }
       } catch (err) {
         console.error('Error fetching manager details:', err);
@@ -93,6 +101,10 @@ const ManagerDetail = () => {
     (e) => e.role_name === 'Employee' && e.manager_id && (e.manager_id._id || e.manager_id) === manager._id
   );
 
+  const managerProjects = projects.filter(
+    (p) => p.lead_id && (p.lead_id._id || p.lead_id) === manager._id
+  );
+
   return (
     <div>
       <div className="page-head">
@@ -108,7 +120,21 @@ const ManagerDetail = () => {
 
       <div className="profile-layout">
         <aside className="panel profile-card">
-          <div className="large-avatar">{getInitials(manager.full_name)}</div>
+          {manager.profile_pic ? (
+            <img 
+              src={manager.profile_pic.startsWith('http') ? manager.profile_pic : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${manager.profile_pic}`} 
+              alt={manager.full_name} 
+              style={{ width: '100px', height: '100px', borderRadius: '50%', objectFit: 'cover', marginBottom: '15px' }}
+            />
+          ) : (
+            <div className="large-avatar" style={{ overflow: 'hidden', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px', borderRadius: '50%' }}>
+              <svg viewBox="0 0 24 24" fill="none" style={{ width: '100%', height: '100%' }}>
+                <rect width="24" height="24" fill="#233138"/>
+                <circle cx="12" cy="9.5" r="4.5" fill="#aebac1"/>
+                <path d="M12 16C7.58 16 4 19.58 4 24H20C20 19.58 16.42 16 12 16Z" fill="#aebac1"/>
+              </svg>
+            </div>
+          )}
           <h2>{manager.full_name}</h2>
           <p>{manager.designation || 'Project Manager'}</p>
           <span className="pill success" style={{ textTransform: 'capitalize', marginBottom: '10px' }}>
@@ -141,7 +167,7 @@ const ManagerDetail = () => {
         </aside>
 
         <section style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div className="metrics three">
+          <div className="metrics four">
             <article className="metric">
               <span>Direct Reports</span>
               <strong>{directReports.length} SDEs</strong>
@@ -157,10 +183,16 @@ const ManagerDetail = () => {
               <strong>{leaves.filter(l => l.status === 'approved').length} Days</strong>
               <small>Approved leave request logs</small>
             </article>
+            <article className="metric">
+              <span>Assigned Projects</span>
+              <strong>{managerProjects.length} Projects</strong>
+              <small>Leading / Working on</small>
+            </article>
           </div>
 
           <div className="segmented">
             <button className={activeTab === 'reports' ? 'active' : ''} onClick={() => setActiveTab('reports')}>Reporting Employees</button>
+            <button className={activeTab === 'projects' ? 'active' : ''} onClick={() => setActiveTab('projects')}>Assigned Projects</button>
             <button className={activeTab === 'attendance' ? 'active' : ''} onClick={() => setActiveTab('attendance')}>Attendance History</button>
             <button className={activeTab === 'leaves' ? 'active' : ''} onClick={() => setActiveTab('leaves')}>Leave History</button>
           </div>
@@ -296,6 +328,42 @@ const ManagerDetail = () => {
                     {leaves.length === 0 && (
                       <tr>
                         <td colSpan="5" style={{ textAlign: 'center', opacity: 0.7, padding: '30px' }}>No leave applications found.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          )}
+
+          {activeTab === 'projects' && (
+            <article className="panel table-panel active">
+              <div className="panel-head pad">
+                <div>
+                  <h3>Assigned Projects ({managerProjects.length})</h3>
+                  <p>List of projects managed or led by this project manager.</p>
+                </div>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Key</th>
+                      <th>Project Name</th>
+                      <th>Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {managerProjects.map((proj) => (
+                      <tr key={proj._id}>
+                        <td><code>{proj.key}</code></td>
+                        <td><b>{proj.name}</b></td>
+                        <td>{proj.description || 'No description provided.'}</td>
+                      </tr>
+                    ))}
+                    {managerProjects.length === 0 && (
+                      <tr>
+                        <td colSpan="3" style={{ textAlign: 'center', opacity: 0.7, padding: '30px' }}>No projects assigned to this manager.</td>
                       </tr>
                     )}
                   </tbody>

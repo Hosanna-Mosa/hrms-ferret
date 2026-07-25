@@ -48,6 +48,55 @@ router.post('/manager/:employeeId', auth, role(['HR', 'Manager', 'SuperAdmin']),
       manager_feedback
     });
 
+    // Fetch employee and manager details to send email
+    const Employee = require('../models/Employee');
+    const employee = await Employee.findById(empId).populate('user_id').exec();
+    const manager = await Employee.findById(req.user.employeeId).populate('user_id').exec();
+    if (employee && employee.user_id && employee.user_id.work_email) {
+      const { sendMail } = require('../services/emailService');
+      try {
+        await sendMail({
+          to: employee.user_id.work_email,
+          subject: `Performance Review Published: ${review_period || 'Q3 2026'}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; border: 1px solid #e1e3e6; padding: 24px; border-radius: 12px;">
+              <h3 style="color: #e42335; margin-top: 0;">Hello, ${employee.full_name}</h3>
+              <p>Your performance review for <strong>${review_period || 'Q3 2026'}</strong> has been published by <strong>${manager?.full_name || 'Manager'}</strong>.</p>
+              <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold; width: 150px;">Rating:</td>
+                  <td><strong style="color: #e42335; font-size: 16px;">${manager_rating || 4.5} / 5.0</strong></td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold;">Attendance Score:</td>
+                  <td>${attendance_score || 95}%</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold;">Sprint Score:</td>
+                  <td>${sprint_score || 90}%</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold;">Task Score:</td>
+                  <td>${task_score || 92}%</td>
+                </tr>
+                ${manager_feedback ? `
+                <tr>
+                  <td style="padding: 8px 0; font-weight: bold; vertical-align: top;">Manager Feedback:</td>
+                  <td><em>"${manager_feedback}"</em></td>
+                </tr>
+                ` : ''}
+              </table>
+              <p>You can view full details of your Q2/Q3 key achievements inside your Performance Dashboard in the portal.</p>
+              <hr style="border: 0; border-top: 1px solid #e1e3e6; margin: 20px 0;" />
+              <small style="color: #707683;">Ferret PeopleOS Notifications</small>
+            </div>
+          `
+        });
+      } catch (mailErr) {
+        console.error('Failed to send performance review notification email:', mailErr);
+      }
+    }
+
     res.status(201).json(review);
   } catch (error) {
     console.error('Error creating performance review:', error);

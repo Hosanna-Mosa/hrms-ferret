@@ -28,7 +28,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
     { page: 'admin/managers', label: 'Managers', icon: '♟', roles: ['HR', 'SuperAdmin'] },
     { page: 'admin/employees', label: 'Employees', icon: '♙', roles: ['HR', 'Manager', 'SuperAdmin'] },
     { page: 'admin/departments', label: 'Departments', icon: '☷', roles: ['HR', 'SuperAdmin'] },
-    { page: 'projects-sprints', label: 'Projects & Sprints', icon: '☲', roles: ['HR', 'Manager', 'SuperAdmin'] },
+    { page: 'projects-sprints', label: 'Projects & Sprints', icon: '☲', roles: ['Manager', 'SuperAdmin'] },
   ];
 
   // Determine which items to display
@@ -48,6 +48,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       employeeItems[5], // Onboarding
       employeeItems[6], // Offboarding
       employeeItems[7], // Documents
+      employeeItems[8], // Announcements
       employeeItems[11], // My Profile
     ];
   } else if (role === 'HR') {
@@ -58,10 +59,10 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       { page: 'admin/employees', label: 'Employees', icon: '♙' },
       { page: 'admin/departments', label: 'Departments', icon: '☷' },
       employeeItems[3], // Leave
-      { page: 'projects-sprints', label: 'Projects & Sprints', icon: '☲' },
       employeeItems[5], // Onboarding
       employeeItems[6], // Offboarding
       employeeItems[7], // Documents
+      employeeItems[8], // Announcements
       employeeItems[11], // My Profile
     ];
   } else if (role === 'SuperAdmin') {
@@ -83,7 +84,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
   return (
     <aside className={`sidebar ${isOpen ? 'open' : ''}`} id="sidebar">
       <div className="sidebar-brand brand">
-        <span className="logo">F</span>
+        <img src="/logo.svg" className="logo" alt="Ferret Logo" style={{ objectFit: 'contain' }} />
         <div>
           <strong>FERRET</strong>
           <small>PEOPLEOS</small>

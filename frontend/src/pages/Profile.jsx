@@ -31,6 +31,31 @@ const Profile = () => {
     fetchProfile();
   }, []);
 
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('document_type', 'Profile Photo');
+
+    try {
+      const res = await apiRequest('/api/documents/upload', {
+        method: 'POST',
+        body: formData
+      });
+      if (res.ok) {
+        alert('Profile photo updated successfully!');
+        fetchProfile();
+      } else {
+        const err = await res.json();
+        alert(err.message || 'Upload failed');
+      }
+    } catch (err) {
+      alert('Upload failed: ' + err.message);
+    }
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     try {
@@ -93,7 +118,34 @@ const Profile = () => {
 
       <div className="profile-layout">
         <aside className="panel profile-card">
-          <div className="large-avatar">{getInitials(employee.full_name)}</div>
+          {employee.profile_pic ? (
+            <img 
+              src={employee.profile_pic.startsWith('http') ? employee.profile_pic : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${employee.profile_pic}`} 
+              alt={employee.full_name} 
+              style={{ width: '100px', height: '100px', borderRadius: '50%', objectFit: 'cover', marginBottom: '15px' }}
+            />
+          ) : (
+            <div className="large-avatar" style={{ overflow: 'hidden', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px', borderRadius: '50%' }}>
+              <svg viewBox="0 0 24 24" fill="none" style={{ width: '100%', height: '100%' }}>
+                <rect width="24" height="24" fill="#233138"/>
+                <circle cx="12" cy="9.5" r="4.5" fill="#aebac1"/>
+                <path d="M12 16C7.58 16 4 19.58 4 24H20C20 19.58 16.42 16 12 16Z" fill="#aebac1"/>
+              </svg>
+            </div>
+          )}
+
+          {editing && (
+            <label className="btn outline small" style={{ cursor: 'pointer', marginBottom: '15px', padding: '6px 12px', fontSize: '11px', display: 'inline-block' }}>
+              Change Photo
+              <input 
+                type="file" 
+                accept="image/*" 
+                style={{ display: 'none' }} 
+                onChange={handlePhotoUpload} 
+              />
+            </label>
+          )}
+
           <h2>{employee.full_name}</h2>
           <p>{employee.designation}</p>
           <span className="pill success" style={{ textTransform: 'capitalize' }}>

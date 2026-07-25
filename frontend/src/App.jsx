@@ -110,7 +110,7 @@ function App() {
             <Route path="onboarding" element={<RoleRoute allowedRoles={['Employee', 'Manager', 'HR', 'SuperAdmin']}><Onboarding /></RoleRoute>} />
             <Route path="offboarding" element={<RoleRoute allowedRoles={['Employee', 'Manager', 'HR', 'SuperAdmin']}><Offboarding /></RoleRoute>} />
             <Route path="documents" element={<RoleRoute allowedRoles={['Employee', 'Manager', 'HR', 'SuperAdmin']}><Documents /></RoleRoute>} />
-            <Route path="announcements" element={<RoleRoute allowedRoles={['Employee', 'SuperAdmin']}><Announcements /></RoleRoute>} />
+            <Route path="announcements" element={<RoleRoute allowedRoles={['Employee', 'Manager', 'HR', 'SuperAdmin']}><Announcements /></RoleRoute>} />
             <Route path="performance" element={<RoleRoute allowedRoles={['Employee', 'SuperAdmin']}><Performance /></RoleRoute>} />
             <Route path="training" element={<RoleRoute allowedRoles={['Employee', 'SuperAdmin']}><Training /></RoleRoute>} />
             <Route path="profile" element={<RoleRoute allowedRoles={['Employee', 'Manager', 'HR', 'SuperAdmin']}><Profile /></RoleRoute>} />
@@ -159,7 +159,7 @@ function App() {
             <Route 
               path="projects-sprints" 
               element={
-                <RoleRoute allowedRoles={['HR', 'Manager', 'SuperAdmin']}>
+                <RoleRoute allowedRoles={['Manager', 'SuperAdmin']}>
                   <ProjectsSprints />
                 </RoleRoute>
               } 

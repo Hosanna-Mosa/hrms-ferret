@@ -10,8 +10,9 @@ const Announcements = () => {
   const [category, setCategory] = useState('Company Update');
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
+  const [publishedAt, setPublishedAt] = useState(new Date().toISOString().substring(0, 10));
 
-  const isAdmin = user && ['HR', 'SuperAdmin'].includes(user.role);
+  const isAdmin = user && ['HR', 'SuperAdmin', 'Manager'].includes(user.role);
 
   const fetchAnnouncements = async () => {
     try {
@@ -34,13 +35,14 @@ const Announcements = () => {
     try {
       const res = await apiRequest('/api/announcements/admin', {
         method: 'POST',
-        body: JSON.stringify({ category, title, body: message })
+        body: JSON.stringify({ category, title, body: message, published_at: publishedAt })
       });
       if (res.ok) {
         fetchAnnouncements();
         setModalOpen(false);
         setTitle('');
         setMessage('');
+        setPublishedAt(new Date().toISOString().substring(0, 10));
         alert('Announcement published.');
       }
     } catch (err) {
@@ -139,6 +141,10 @@ const Announcements = () => {
           <label>
             Title
             <input value={title} onChange={(e) => setTitle(e.target.value)} required />
+          </label>
+          <label>
+            Publish Date
+            <input type="date" value={publishedAt} onChange={(e) => setPublishedAt(e.target.value)} required />
           </label>
           <label>
             Message

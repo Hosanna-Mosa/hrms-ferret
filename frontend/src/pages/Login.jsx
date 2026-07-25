@@ -61,7 +61,7 @@ const Login = () => {
     <section id="authScreen" className="auth-screen">
       <div className="auth-brand-panel">
         <div className="brand">
-          <span className="logo">F</span>
+          <img src="/logo.svg" className="logo" alt="Ferret Logo" style={{ objectFit: 'contain' }} />
           <div>
             <strong>FERRET</strong>
             <small>PEOPLEOS</small>
@@ -83,7 +83,7 @@ const Login = () => {
       <div className="auth-form-panel">
         <div className="login-card">
           <div className="mobile-brand brand">
-            <span className="logo">F</span>
+            <img src="/logo.svg" className="logo" alt="Ferret Logo" style={{ objectFit: 'contain' }} />
             <div>
               <strong>FERRET</strong>
               <small>PEOPLEOS</small>

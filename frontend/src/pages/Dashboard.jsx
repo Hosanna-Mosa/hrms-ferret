@@ -4,7 +4,7 @@ import { apiRequest } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
 const Dashboard = () => {
-  const { user } = useAuth();
+  const { user, setIsClockedIn } = useAuth();
   const navigate = useNavigate();
 
   // Local States
@@ -21,8 +21,13 @@ const Dashboard = () => {
   const [employeeCount, setEmployeeCount] = useState(0);
   const [projectCount, setProjectCount] = useState(0);
   const [managerCount, setManagerCount] = useState(0);
+  const [hrCount, setHrCount] = useState(0);
+  const [onlyManagerCount, setOnlyManagerCount] = useState(0);
   const [recentEmployees, setRecentEmployees] = useState([]);
   const [recentProjects, setRecentProjects] = useState([]);
+  const [selectedProjectDetail, setSelectedProjectDetail] = useState(null);
+  const [projectTeam, setProjectTeam] = useState([]);
+  const [loadingTeam, setLoadingTeam] = useState(false);
 
   // Fetch initial dashboard metrics
   const fetchMetrics = async () => {
@@ -32,6 +37,8 @@ const Dashboard = () => {
         if (empRes.ok) {
           const emps = await empRes.json();
           setEmployeeCount(emps.filter(e => e.role_name === 'Employee').length);
+          setOnlyManagerCount(emps.filter(e => e.role_name === 'Manager').length);
+          setHrCount(emps.filter(e => e.role_name === 'HR').length);
           setManagerCount(emps.filter(e => e.role_name === 'Manager' || e.role_name === 'HR').length);
           setRecentEmployees(emps.slice(0, 5));
         }
@@ -97,9 +104,25 @@ const Dashboard = () => {
       }
 
       // 3. Fetch Tasks
-      const tasksRes = await apiRequest('/api/tasks/me');
-      if (tasksRes.ok) {
-        const tasksData = await tasksRes.json();
+      let tasksData = [];
+      if (user?.role === 'Manager') {
+        const tasksRes = await apiRequest('/api/tasks/manager/all');
+        if (tasksRes.ok) {
+          tasksData = await tasksRes.json();
+        }
+      } else if (user?.role !== 'HR') {
+        const tasksRes = await apiRequest('/api/tasks/me');
+        if (tasksRes.ok) {
+          tasksData = await tasksRes.json();
+        }
+      }
+
+      if (user?.role === 'Manager') {
+        const activeReporteeTasks = tasksData
+          .filter(t => t.status !== 'done' && t.due_date)
+          .sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+        setTasks(activeReporteeTasks.slice(0, 5));
+      } else if (user?.role !== 'HR') {
         setTasks(tasksData.filter(t => t.status !== 'done').slice(0, 3));
       }
 
@@ -130,6 +153,41 @@ const Dashboard = () => {
 
     } catch (error) {
       console.error('Error fetching dashboard details:', error);
+    }
+  };
+
+  const handleProjectClick = async (project) => {
+    setSelectedProjectDetail(project);
+    setLoadingTeam(true);
+    setProjectTeam([]);
+    try {
+      const res = await apiRequest(`/api/tasks/manager/all?project_id=${project._id}`);
+      if (res.ok) {
+        const tasksData = await res.json();
+        const uniqueEmps = [];
+        const seen = new Set();
+        for (const t of tasksData) {
+          if (t.employee_id && !seen.has(t.employee_id._id)) {
+            seen.add(t.employee_id._id);
+            uniqueEmps.push(t.employee_id);
+          }
+        }
+        
+        if (uniqueEmps.length === 0 && project.lead_id) {
+          const empRes = await apiRequest('/api/employees/admin/employees');
+          if (empRes.ok) {
+            const allEmps = await empRes.json();
+            const reportees = allEmps.filter(e => e.manager_id === project.lead_id._id || e.manager_name === project.lead_id.full_name);
+            setProjectTeam(reportees);
+          }
+        } else {
+          setProjectTeam(uniqueEmps);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching project team:', err);
+    } finally {
+      setLoadingTeam(false);
     }
   };
 
@@ -187,6 +245,7 @@ const Dashboard = () => {
         body: JSON.stringify({ work_mode: 'remote' })
       });
       if (res.ok) {
+        setIsClockedIn(true);
         fetchMetrics();
         alert('Clocked in successfully!');
       }
@@ -212,6 +271,7 @@ const Dashboard = () => {
     try {
       const res = await apiRequest('/api/attendance/check-out', { method: 'POST' });
       if (res.ok) {
+        setIsClockedIn(false);
         fetchMetrics();
         alert('Clocked out successfully!');
       }
@@ -258,13 +318,7 @@ const Dashboard = () => {
         </div>
 
         {/* CRM Metric Cards */}
-        <div className="metrics three" style={{ gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '20px' }}>
-          <article className="metric" style={{ cursor: 'pointer' }} onClick={() => navigate('/admin/employees')}>
-            <span>Total Developers</span>
-            <strong>{employeeCount} SDEs</strong>
-            <small>Active employee roster</small>
-          </article>
-
+        <div className="metrics four" style={{ gap: '20px', marginBottom: '20px' }}>
           <article className="metric" style={{ cursor: 'pointer' }} onClick={() => navigate('/projects-sprints')}>
             <span>Active Projects</span>
             <strong>{projectCount} Workspaces</strong>
@@ -272,9 +326,21 @@ const Dashboard = () => {
           </article>
 
           <article className="metric" style={{ cursor: 'pointer' }} onClick={() => navigate('/admin/managers')}>
-            <span>Management Team</span>
-            <strong>{managerCount} Leads</strong>
-            <small>Active Project Managers & HRs</small>
+            <span>Total Managers</span>
+            <strong>{onlyManagerCount} Leads</strong>
+            <small>Active Project Managers</small>
+          </article>
+
+          <article className="metric" style={{ cursor: 'pointer' }} onClick={() => navigate('/admin/managers')}>
+            <span>Total HRs</span>
+            <strong>{hrCount} Admins</strong>
+            <small>Active HR Personnel</small>
+          </article>
+
+          <article className="metric" style={{ cursor: 'pointer' }} onClick={() => navigate('/admin/employees')}>
+            <span>Total Developers</span>
+            <strong>{employeeCount} SDEs</strong>
+            <small>Active employee roster</small>
           </article>
         </div>
 
@@ -284,7 +350,7 @@ const Dashboard = () => {
             <div className="panel-head">
               <div>
                 <h3>Project Portfolios</h3>
-                <p>Enterprise client projects and designated leads.</p>
+                <p>Enterprise client projects and designated leads. Click to inspect.</p>
               </div>
               <button className="text-btn" onClick={() => navigate('/projects-sprints')}>
                 Manage Portfolios
@@ -292,7 +358,12 @@ const Dashboard = () => {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' }}>
               {recentProjects.map(p => (
-                <div key={p._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fafbfc' }}>
+                <div 
+                  key={p._id} 
+                  onClick={() => handleProjectClick(p)}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fafbfc', cursor: 'pointer' }}
+                  title="Click to view details & team members"
+                >
                   <div>
                     <code style={{ fontSize: '10px', fontWeight: 'bold' }}>{p.key}</code>
                     <div style={{ fontWeight: 'bold', fontSize: '13px', marginTop: '2px' }}>{p.name}</div>
@@ -389,6 +460,86 @@ const Dashboard = () => {
             </table>
           </div>
         </article>
+
+        {/* Project Details Modal */}
+        {selectedProjectDetail && (
+          <div className="modal" style={{ display: 'grid' }}>
+            <div className="backdrop" onClick={() => setSelectedProjectDetail(null)}></div>
+            <div className="modal-card" style={{ maxWidth: '520px' }}>
+              <button className="modal-x" onClick={() => setSelectedProjectDetail(null)}>×</button>
+              <span className="eyebrow" style={{ color: 'var(--blue)' }}>PROJECT WORKSPACE DETAILS</span>
+              <h2 style={{ fontSize: '22px', margin: '4px 0 2px' }}>{selectedProjectDetail.name}</h2>
+              <code style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '15px' }}>Key: {selectedProjectDetail.key}</code>
+              
+              <div style={{ marginBottom: '20px' }}>
+                <h4 style={{ fontSize: '12px', margin: '0 0 6px', color: 'var(--muted)' }}>Description</h4>
+                <p style={{ fontSize: '12px', margin: 0, lineHeight: '1.5', color: 'var(--ink)' }}>
+                  {selectedProjectDetail.description || 'No project description provided.'}
+                </p>
+              </div>
+
+              <div style={{ marginBottom: '20px', padding: '12px', borderRadius: '10px', background: '#f5f6f8', border: '1px solid var(--line)' }}>
+                <h4 style={{ fontSize: '11px', margin: '0 0 6px', color: 'var(--muted)', textTransform: 'uppercase' }}>Assigned Project Lead / Manager</h4>
+                {selectedProjectDetail.lead_id ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {selectedProjectDetail.lead_id.profile_pic ? (
+                        <img 
+                          src={selectedProjectDetail.lead_id.profile_pic.startsWith('http') ? selectedProjectDetail.lead_id.profile_pic : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${selectedProjectDetail.lead_id.profile_pic}`} 
+                          alt="" 
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <svg viewBox="0 0 24 24" fill="none" style={{ width: '100%', height: '100%' }}>
+                          <rect width="24" height="24" fill="#233138"/>
+                          <circle cx="12" cy="9.5" r="4.5" fill="#aebac1"/>
+                          <path d="M12 16C7.58 16 4 19.58 4 24H20C20 19.58 16.42 16 12 16Z" fill="#aebac1"/>
+                        </svg>
+                      )}
+                    </div>
+                    <div>
+                      <strong style={{ fontSize: '13px', display: 'block' }}>{selectedProjectDetail.lead_id.full_name}</strong>
+                      <small style={{ fontSize: '10px', color: 'var(--muted)' }}>{selectedProjectDetail.lead_id.work_email || 'manager@ferrettechnologies.com'}</small>
+                    </div>
+                  </div>
+                ) : (
+                  <em style={{ fontSize: '12px', color: 'var(--muted)' }}>No lead manager assigned</em>
+                )}
+              </div>
+
+              <div>
+                <h4 style={{ fontSize: '11px', margin: '0 0 8px', color: 'var(--muted)', textTransform: 'uppercase' }}>Team Members / SDEs Working on Project</h4>
+                {loadingTeam ? (
+                  <div style={{ fontSize: '12px', padding: '10px 0', fontWeight: 'bold' }}>Loading team members...</div>
+                ) : projectTeam.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
+                    {projectTeam.map(member => (
+                      <div key={member._id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0', borderBottom: '1px solid #f0f1f3' }}>
+                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#eef0f3', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a0a3ab', overflow: 'hidden' }}>
+                          {member.profile_pic ? (
+                            <img src={member.profile_pic.startsWith('http') ? member.profile_pic : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${member.profile_pic}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <svg viewBox="0 0 24 24" fill="none" style={{ width: '100%', height: '100%' }}>
+                              <rect width="24" height="24" fill="#233138"/>
+                              <circle cx="12" cy="9.5" r="4.5" fill="#aebac1"/>
+                              <path d="M12 16C7.58 16 4 19.58 4 24H20C20 19.58 16.42 16 12 16Z" fill="#aebac1"/>
+                            </svg>
+                          )}
+                        </div>
+                        <div>
+                          <strong style={{ fontSize: '12px', display: 'block' }}>{member.full_name}</strong>
+                          <small style={{ fontSize: '9px', color: 'var(--muted)' }}>{member.designation || 'Software Development Engineer'}</small>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '11px', color: 'var(--muted)', padding: '10px 0' }}>No active developers currently assigned tasks in this project.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -535,27 +686,34 @@ const Dashboard = () => {
         </article>
       </div>
 
-      <div className="grid three">
-        <article className="panel">
-          <div className="panel-head">
-            <div>
-              <h3>Assigned Tasks</h3>
-              <p>High-priority work.</p>
+      <div className={user?.role === 'HR' ? "grid two" : "grid three"}>
+        {user?.role !== 'HR' && (
+          <article className="panel">
+            <div className="panel-head">
+              <div>
+                <h3>{user?.role === 'Manager' ? "Direct Reports' Tasks" : "Assigned Tasks"}</h3>
+                <p>{user?.role === 'Manager' ? "Upcoming active tickets" : "High-priority work."}</p>
+              </div>
+              <button className="text-btn" onClick={() => navigate(user?.role === 'Manager' ? '/projects-sprints' : '/tasks')}>
+                View all
+              </button>
             </div>
-            <button className="text-btn" onClick={() => navigate('/tasks')}>
-              View all
-            </button>
-          </div>
-          {tasks.length > 0 ? tasks.map(t => (
-            <div className="task-mini" key={t.id}>
-              <span className={`priority ${t.priority}`}>{t.priority.toUpperCase()}</span>
-              <strong>{t.title}</strong>
-              <small>{t.external_key} · Due {t.due_date ? t.due_date.slice(5, 10) : 'TBD'}</small>
-            </div>
-          )) : (
-            <div className="task-mini"><small>No active pending tasks.</small></div>
-          )}
-        </article>
+            {tasks.length > 0 ? tasks.map(t => (
+              <div className="task-mini" key={t._id || t.id}>
+                <span className={`priority ${t.priority}`}>{t.priority.toUpperCase()}</span>
+                <strong style={{ display: 'block', marginTop: '4px' }}>{t.title}</strong>
+                {user?.role === 'Manager' && (
+                  <div style={{ fontSize: '9px', color: 'var(--muted)', marginTop: '2px' }}>
+                    Assignee: <strong style={{ color: 'var(--ink)' }}>{t.full_name || 'Unknown'}</strong>
+                  </div>
+                )}
+                <small style={{ display: 'block', marginTop: '4px' }}>{t.external_key} · Due {t.due_date ? new Date(t.due_date).toLocaleDateString([], { month: 'short', day: 'numeric' }) : 'TBD'}</small>
+              </div>
+            )) : (
+              <div className="task-mini"><small>No active tasks.</small></div>
+            )}
+          </article>
+        )}
 
         <article className="panel">
           <div className="panel-head">

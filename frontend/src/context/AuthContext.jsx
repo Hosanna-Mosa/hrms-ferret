@@ -6,6 +6,27 @@ const AuthContext = createContext(null);
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isClockedIn, setIsClockedIn] = useState(false);
+
+  const checkClockInStatus = async (employeeId) => {
+    if (!employeeId) return;
+    try {
+      const month = new Date().toISOString().slice(0, 7);
+      const res = await apiRequest(`/api/attendance/me?month=${month}`);
+      if (res.ok) {
+        const attHistory = await res.json();
+        const today = new Date().toISOString().slice(0, 10);
+        const todaySession = attHistory.find(s => s.work_date.slice(0, 10) === today);
+        if (todaySession && !todaySession.check_out_at) {
+          setIsClockedIn(true);
+        } else {
+          setIsClockedIn(false);
+        }
+      }
+    } catch (e) {
+      console.warn('Error checking clock-in status:', e);
+    }
+  };
 
   const checkAuth = async () => {
     try {
@@ -26,8 +47,10 @@ export const AuthProvider = ({ children }) => {
             employeeId: empData._id,
             email: empData.work_email,
             role: empData.role_name,
-            name: empData.full_name
+            name: empData.full_name,
+            profile_pic: empData.profile_pic || null
           });
+          await checkClockInStatus(empData._id);
         }
       }
     } catch (err) {
@@ -62,6 +85,9 @@ export const AuthProvider = ({ children }) => {
     const data = await res.json();
     setAccessToken(data.token);
     setUser(data.user);
+    if (data.user && data.user.employeeId) {
+      await checkClockInStatus(data.user.employeeId);
+    }
     return data.user;
   };
 
@@ -77,7 +103,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, setUser }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, setUser, isClockedIn, setIsClockedIn, checkClockInStatus }}>
       {children}
     </AuthContext.Provider>
   );
