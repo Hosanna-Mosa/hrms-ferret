@@ -16,6 +16,9 @@ const ProjectSchema = new mongoose.Schema({
   lead_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Employee'
+  },
+  github_repo: {
+    type: String
   }
 }, { timestamps: true });
 

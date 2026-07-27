@@ -91,6 +91,38 @@ export const AuthProvider = ({ children }) => {
     return data.user;
   };
 
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastType, setToastType] = useState('success');
+
+  const showToast = (msg, type = 'success') => {
+    setToastMessage(msg);
+    setToastType(type);
+    setToastVisible(true);
+  };
+
+  useEffect(() => {
+    if (toastVisible) {
+      const timer = setTimeout(() => {
+        setToastVisible(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastVisible]);
+
+  useEffect(() => {
+    window.alert = (message) => {
+      const lower = String(message).toLowerCase();
+      let type = 'success';
+      if (lower.includes('fail') || lower.includes('error') || lower.includes('forbidden') || lower.includes('deny') || lower.includes('invalid') || lower.includes('please')) {
+        type = 'error';
+      } else if (lower.includes('warning') || lower.includes('caution')) {
+        type = 'warning';
+      }
+      showToast(message, type);
+    };
+  }, []);
+
   const logout = async () => {
     try {
       await apiRequest('/api/auth/logout', { method: 'POST' });
@@ -103,8 +135,21 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, setUser, isClockedIn, setIsClockedIn, checkClockInStatus }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, setUser, isClockedIn, setIsClockedIn, checkClockInStatus, showToast }}>
       {children}
+      <div 
+        className={`toast ${toastVisible ? 'show' : ''}`} 
+        style={{ 
+          background: toastType === 'error' ? 'var(--red)' : toastType === 'warning' ? 'var(--amber)' : '#15181d', 
+          color: '#fff', 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '8px' 
+        }}
+      >
+        <span>{toastType === 'error' ? '❌' : toastType === 'warning' ? '⚠️' : '✅'}</span>
+        <span>{toastMessage}</span>
+      </div>
     </AuthContext.Provider>
   );
 };

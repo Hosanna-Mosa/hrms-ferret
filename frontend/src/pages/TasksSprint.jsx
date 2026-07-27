@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { apiRequest } from '../utils/api';
+import { apiRequest, getAccessToken } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 
@@ -9,25 +9,23 @@ const TasksSprint = () => {
   const [reportsList, setReportsList] = useState([]);
   const [sprint, setSprint] = useState({ sprint: 'Sprint 12', total_points: 0, completed_points: 0 });
   const [viewMode, setViewMode] = useState('board'); // 'board' or 'list'
+  const [filterSearch, setFilterSearch] = useState('');
+  const [filterPriority, setFilterPriority] = useState('');
+  const [sortBy, setSortBy] = useState('');
 
   // Projects & Sprints integration states
   const [projects, setProjects] = useState([]);
   const [sprints, setSprints] = useState([]);
+  const [projectDocs, setProjectDocs] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [selectedSprintId, setSelectedSprintId] = useState('');
 
   // Create Task Modal States
   const [modalOpen, setModalOpen] = useState(false);
-  const [taskTitle, setTaskTitle] = useState('');
-  const [taskDescription, setTaskDescription] = useState('');
+  const [unassignedTasks, setUnassignedTasks] = useState([]);
+  const [selectedTaskIdToAssign, setSelectedTaskIdToAssign] = useState('');
   const [assignedEmployeeId, setAssignedEmployeeId] = useState('');
-  const [storyPoints, setStoryPoints] = useState(3);
-  const [priority, setPriority] = useState('medium');
-  const [dueDate, setDueDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().slice(0, 10);
-  });
+  const [submitLoading, setSubmitLoading] = useState(false);
 
   // Task Details Modal States
   const [detailModalOpen, setDetailModalOpen] = useState(false);
@@ -70,11 +68,14 @@ const TasksSprint = () => {
   };
 
   const fetchTasksAndSprint = async () => {
-    if (!selectedProjectId || !selectedSprintId) return;
+    if (!selectedProjectId) return;
     try {
-      const endpoint = isManager 
-        ? `/api/tasks/manager/all?project_id=${selectedProjectId}&sprint_id=${selectedSprintId}` 
-        : `/api/tasks/me?project_id=${selectedProjectId}&sprint_id=${selectedSprintId}`;
+      let endpoint = isManager 
+        ? `/api/tasks/manager/all?project_id=${selectedProjectId}` 
+        : `/api/tasks/me?project_id=${selectedProjectId}`;
+      if (selectedSprintId) {
+        endpoint += `&sprint_id=${selectedSprintId}`;
+      }
       const taskRes = await apiRequest(endpoint);
       if (taskRes.ok) {
         const taskData = await taskRes.json();
@@ -89,7 +90,26 @@ const TasksSprint = () => {
             total_points: totalPoints,
             completed_points: completedPoints
           });
+        } else {
+          setSprint({
+            sprint: 'All Tasks',
+            total_points: taskData.reduce((acc, t) => acc + (t.story_points || 0), 0),
+            completed_points: taskData.filter(t => t.status === 'done').reduce((acc, t) => acc + (t.story_points || 0), 0)
+          });
         }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchProjectDocs = async (projId) => {
+    if (!projId) return;
+    try {
+      const res = await apiRequest(`/api/documents/project/${projId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setProjectDocs(data);
       }
     } catch (e) {
       console.error(e);
@@ -99,6 +119,7 @@ const TasksSprint = () => {
   const handleProjectChange = async (projId) => {
     setSelectedProjectId(projId);
     setSelectedSprintId('');
+    fetchProjectDocs(projId);
     try {
       const sprintRes = await apiRequest(`/api/sprints?project_id=${projId}`);
       if (sprintRes.ok) {
@@ -138,11 +159,41 @@ const TasksSprint = () => {
     }
   }, [user]);
 
+  const fetchUnassignedTasks = async () => {
+    if (!selectedProjectId) return;
+    try {
+      let endpoint = `/api/tasks/manager/all?project_id=${selectedProjectId}`;
+      if (selectedSprintId) {
+        endpoint += `&sprint_id=${selectedSprintId}`;
+      }
+      const res = await apiRequest(endpoint);
+      if (res.ok) {
+        const data = await res.json();
+        const unassigned = data.filter(t => !t.employee_id || t.employee_id.full_name === 'Unassigned' || t.full_name === 'Unassigned');
+        setUnassignedTasks(unassigned);
+      }
+    } catch (e) {
+      console.error('Error fetching unassigned tasks:', e);
+    }
+  };
+
   useEffect(() => {
-    if (selectedProjectId && selectedSprintId) {
+    if (selectedProjectId) {
       fetchTasksAndSprint();
+      fetchProjectDocs(selectedProjectId);
+      fetchUnassignedTasks();
+    } else {
+      setTasks([]);
+      setProjectDocs([]);
+      setUnassignedTasks([]);
     }
   }, [selectedProjectId, selectedSprintId, sprints]);
+
+  useEffect(() => {
+    if (modalOpen) {
+      fetchUnassignedTasks();
+    }
+  }, [modalOpen]);
 
   const handleStatusChange = async (taskId, newStatus) => {
     if (newStatus === 'done' && !canApproveToDone) {
@@ -166,36 +217,25 @@ const TasksSprint = () => {
     }
   };
 
-  const handleCreateTask = async (e) => {
+  const handleAssignTask = async (e) => {
     e.preventDefault();
-    if (!selectedProjectId || !selectedSprintId) {
-      alert('Please select a project and sprint first.');
+    if (!selectedTaskIdToAssign) {
+      alert('Please select a task to assign.');
       return;
     }
+    setSubmitLoading(true);
     try {
-      const res = await apiRequest('/api/tasks', {
-        method: 'POST',
+      const res = await apiRequest(`/api/tasks/manager/${selectedTaskIdToAssign}`, {
+        method: 'PATCH',
         body: JSON.stringify({
-          title: taskTitle,
-          description: taskDescription,
-          employee_id: assignedEmployeeId || undefined,
-          story_points: storyPoints,
-          priority: priority,
-          due_date: dueDate || undefined,
-          project_id: selectedProjectId,
-          sprint_id: selectedSprintId,
-          sprint: sprint.sprint
+          employee_id: assignedEmployeeId || null
         })
       });
       if (res.ok) {
         fetchTasksAndSprint();
         setModalOpen(false);
-        setTaskTitle('');
-        setTaskDescription('');
+        setSelectedTaskIdToAssign('');
         setAssignedEmployeeId('');
-        setStoryPoints(3);
-        setPriority('medium');
-        setDueDate('');
         alert('Task assigned successfully.');
       } else {
         const err = await res.json();
@@ -203,11 +243,55 @@ const TasksSprint = () => {
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      setSubmitLoading(false);
     }
   };
 
+  const getFilteredAndSortedTasks = () => {
+    let result = [...tasks];
+
+    // Filter by search query (title, key, assignee employee name)
+    if (filterSearch) {
+      const searchLower = filterSearch.toLowerCase();
+      result = result.filter(t => 
+        t.title?.toLowerCase().includes(searchLower) ||
+        t.external_key?.toLowerCase().includes(searchLower) ||
+        t.full_name?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Filter by priority
+    if (filterPriority) {
+      result = result.filter(t => t.priority?.toLowerCase() === filterPriority.toLowerCase());
+    }
+
+    // Sort by priority (High -> Medium -> Low)
+    if (sortBy === 'priority') {
+      const priorityWeight = { high: 3, medium: 2, low: 1 };
+      result.sort((a, b) => {
+        const weightA = priorityWeight[a.priority?.toLowerCase()] || 0;
+        const weightB = priorityWeight[b.priority?.toLowerCase()] || 0;
+        return weightB - weightA;
+      });
+    }
+
+    // Sort by due date (near due date first)
+    if (sortBy === 'dueDate') {
+      result.sort((a, b) => {
+        if (!a.due_date) return 1;
+        if (!b.due_date) return -1;
+        return new Date(a.due_date) - new Date(b.due_date);
+      });
+    }
+
+    return result;
+  };
+
+  const filteredAndSortedTasks = getFilteredAndSortedTasks();
+
   const getTasksByStatus = (status) => {
-    return tasks.filter(t => t.status.toLowerCase() === status.toLowerCase());
+    return filteredAndSortedTasks.filter(t => t.status.toLowerCase() === status.toLowerCase());
   };
 
   const sprintPct = sprint.total_points > 0 ? Math.round((sprint.completed_points / sprint.total_points) * 100) : 0;
@@ -227,7 +311,7 @@ const TasksSprint = () => {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', alignItems: 'center', background: '#f8fafc', padding: '10px 16px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '10px', alignItems: 'center', background: '#f8fafc', padding: '10px 16px', borderRadius: '8px', border: '1px solid var(--line)' }}>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
           <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--muted)' }}>Project:</span>
           <select value={selectedProjectId} onChange={(e) => handleProjectChange(e.target.value)} style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--line)', background: '#fff', fontSize: '13px' }}>
@@ -240,6 +324,7 @@ const TasksSprint = () => {
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
           <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--muted)' }}>Sprint:</span>
           <select value={selectedSprintId} onChange={(e) => setSelectedSprintId(e.target.value)} style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--line)', background: '#fff', fontSize: '13px' }}>
+            {sprints.length > 0 && <option value="">All Sprints</option>}
             {sprints.map(s => {
               const dueDateStr = s.end_date ? new Date(s.end_date).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '';
               return (
@@ -252,10 +337,49 @@ const TasksSprint = () => {
           </select>
         </div>
       </div>
+
+      {selectedProjectId && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center', marginBottom: '20px', fontSize: '12px', background: '#fff', padding: '10px 16px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+          {projects.find(p => p._id === selectedProjectId)?.github_repo && (
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <strong style={{ color: 'var(--muted)' }}>Codebase:</strong>{' '}
+              <a 
+                href={projects.find(p => p._id === selectedProjectId).github_repo} 
+                target="_blank" 
+                rel="noreferrer" 
+                style={{ color: 'var(--primary)', textDecoration: 'none', fontWeight: 'bold' }}
+              >
+                GitHub Repository
+              </a>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <strong style={{ color: 'var(--muted)' }}>Blueprints:</strong>
+            {projectDocs.length > 0 ? (
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {projectDocs.map(doc => (
+                  <a 
+                    key={doc._id}
+                    href={`${import.meta.env.VITE_API_URL || ''}/api/documents/${doc._id}/download?token=${getAccessToken() || ''}`} 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    className="pill outline"
+                    style={{ fontSize: '11px', textDecoration: 'none', background: '#f8fafc', padding: '2px 8px', borderRadius: '12px', border: '1px solid var(--line)', color: 'var(--ink)' }}
+                  >
+                    📄 {doc.document_type.split(' ')[0]} {/* e.g. PRD, SDD */}
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <span style={{ color: 'var(--muted)', fontStyle: 'italic' }}>No specifications uploaded yet.</span>
+            )}
+          </div>
+        </div>
+      )}
       <div className="page-head">
         <div>
           <span className="eyebrow">{isManager ? 'TEAM sprint management' : 'DELIVERY'}</span>
-          <h1>{isManager ? 'Team Tasks & Sprint' : 'Tasks & Sprint'}</h1>
+          <h1>{isManager ? 'Team Tasks' : 'Tasks'}</h1>
           <p>
             {isManager 
               ? 'Assign sprint tasks, monitor status boards, check deadlines, and track SDE story points.'
@@ -299,6 +423,48 @@ const TasksSprint = () => {
           <div className="progress">
             <i style={{ width: `${sprintPct}%` }}></i>
           </div>
+        </div>
+      </div>
+
+      {/* Filters & Sorting Panel */}
+      <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', alignItems: 'center', background: '#f8fafc', padding: '12px 18px', borderRadius: '10px', border: '1px solid var(--line)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: 1, minWidth: '220px' }}>
+          <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--muted)' }}>Search:</span>
+          <div className="search small-search" style={{ margin: 0, width: '100%' }}>
+            <span>⌕</span>
+            <input 
+              type="text"
+              placeholder="Search by title, key, or employee..."
+              value={filterSearch}
+              onChange={(e) => setFilterSearch(e.target.value)}
+              style={{ fontSize: '12px', border: 0, padding: 0 }}
+            />
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--muted)' }}>Priority Filter:</span>
+          <select 
+            value={filterPriority} 
+            onChange={(e) => setFilterPriority(e.target.value)} 
+            style={{ width: '130px', padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fff', fontSize: '12px', marginTop: 0 }}
+          >
+            <option value="">All Priorities</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--muted)' }}>Sort by:</span>
+          <select 
+            value={sortBy} 
+            onChange={(e) => setSortBy(e.target.value)} 
+            style={{ width: '170px', padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fff', fontSize: '12px', marginTop: 0 }}
+          >
+            <option value="">Default Order</option>
+            <option value="priority">High to Low Priority</option>
+            <option value="dueDate">Near Due Date First</option>
+          </select>
         </div>
       </div>
 
@@ -382,7 +548,7 @@ const TasksSprint = () => {
                 </tr>
               </thead>
               <tbody>
-                {tasks.map(t => (
+                {filteredAndSortedTasks.map(t => (
                   <tr 
                     key={t._id}
                     onClick={() => handleOpenDetail(t)}
@@ -421,36 +587,76 @@ const TasksSprint = () => {
 
       {/* Assign Task Modal */}
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)}>
-        <h2>Assign Team Task</h2>
-        <p>Create a sprint task and assign it to a reporting SDE.</p>
-        <form onSubmit={handleCreateTask}>
-          <div className="form-group" style={{ marginBottom: '15px' }}>
-            <label style={{ margin: 0 }}>
-              Task Title
-              <input
-                type="text"
-                required
-                placeholder="Describe the task or ticket details"
-                value={taskTitle}
-                onChange={(e) => setTaskTitle(e.target.value)}
-              />
-            </label>
-          </div>
+        <h2>Assign Sprint Task</h2>
+        <p>Allocate a planned sprint task to a reporting SDE.</p>
+        <form onSubmit={handleAssignTask}>
+          {unassignedTasks.length === 0 ? (
+            <div style={{ padding: '15px', background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '8px', color: '#b45309', fontSize: '13px', marginBottom: '15px', textAlign: 'center' }}>
+              ⚠️ No unassigned tasks found for the selected project and sprint. Please add tasks when scheduling/planning sprints.
+            </div>
+          ) : (
+            <div className="form-group" style={{ marginBottom: '15px' }}>
+              <label style={{ margin: 0 }}>
+                Select Planned Task
+                <select
+                  required
+                  value={selectedTaskIdToAssign}
+                  onChange={(e) => setSelectedTaskIdToAssign(e.target.value)}
+                >
+                  <option value="">-- Choose Task --</option>
+                  {unassignedTasks.map(t => (
+                    <option key={t._id} value={t._id}>
+                      {t.external_key ? `[${t.external_key}] ` : ''}{t.title} ({t.story_points || 0} SP, {t.priority})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
 
-          <div className="form-group" style={{ marginBottom: '15px' }}>
-            <label style={{ margin: 0 }}>
-              Description
-              <textarea
-                placeholder="Enter detailed description of the task"
-                value={taskDescription}
-                onChange={(e) => setTaskDescription(e.target.value)}
-                rows="3"
-                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fff', fontSize: '13px', marginTop: '5px' }}
-              />
-            </label>
-          </div>
+          {(() => {
+            const selectedTaskDetails = unassignedTasks.find(t => t._id === selectedTaskIdToAssign);
+            if (!selectedTaskDetails) return null;
+            return (
+              <div style={{ 
+                background: '#f8fafc', 
+                border: '1px solid var(--line)', 
+                borderRadius: '8px', 
+                padding: '12px', 
+                marginBottom: '15px',
+                fontSize: '12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px'
+              }}>
+                <h4 style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--muted)', margin: 0 }}>Planned Task Details</h4>
+                {selectedTaskDetails.description && (
+                  <div>
+                    <strong>Description:</strong>{' '}
+                    <span style={{ color: 'var(--ink)' }}>{selectedTaskDetails.description}</span>
+                  </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginTop: '4px' }}>
+                  <div>
+                    <strong>Priority:</strong>{' '}
+                    <span className={`pill ${selectedTaskDetails.priority === 'high' ? 'danger' : selectedTaskDetails.priority === 'medium' ? 'warning' : 'neutral'}`} style={{ fontSize: '9px', padding: '2px 6px' }}>
+                      {selectedTaskDetails.priority?.toUpperCase()}
+                    </span>
+                  </div>
+                  <div>
+                    <strong>Story Points:</strong>{' '}
+                    <span style={{ fontWeight: 'bold' }}>{selectedTaskDetails.story_points || 0} SP</span>
+                  </div>
+                  <div>
+                    <strong>Due Date:</strong>{' '}
+                    <span>{selectedTaskDetails.due_date ? new Date(selectedTaskDetails.due_date).toLocaleDateString() : '—'}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
-          <div className="form-group" style={{ marginBottom: '15px' }}>
+          <div className="form-group" style={{ marginBottom: '25px' }}>
             <label style={{ margin: 0 }}>
               Assignee (Direct Report)
               <select
@@ -466,72 +672,8 @@ const TasksSprint = () => {
             </label>
           </div>
 
-          <div className="form-grid">
-            <label>
-              Story Points
-              <input
-                type="number"
-                min="1"
-                max="13"
-                value={storyPoints}
-                onChange={(e) => setStoryPoints(parseInt(e.target.value))}
-                required
-              />
-            </label>
-
-            <label>
-              Priority
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </label>
-          </div>
-
-          <div className="form-group" style={{ marginBottom: '25px' }}>
-            <label style={{ margin: 0 }}>
-              Due Date
-              <input
-                type="date"
-                required
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-              />
-            </label>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-              <button
-                type="button"
-                className="btn outline small"
-                style={{ padding: '4px 8px', fontSize: '10px', minWidth: 'auto', height: 'auto', lineHeight: 'normal' }}
-                onClick={() => {
-                  const d = new Date();
-                  d.setDate(d.getDate() + 1);
-                  setDueDate(d.toISOString().slice(0, 10));
-                }}
-              >
-                Tomorrow (+1d)
-              </button>
-              <button
-                type="button"
-                className="btn outline small"
-                style={{ padding: '4px 8px', fontSize: '10px', minWidth: 'auto', height: 'auto', lineHeight: 'normal' }}
-                onClick={() => {
-                  const d = new Date();
-                  d.setDate(d.getDate() + 2);
-                  setDueDate(d.toISOString().slice(0, 10));
-                }}
-              >
-                In 2 Days (+2d)
-              </button>
-            </div>
-          </div>
-
-          <button className="btn primary full" type="submit">
-            Create & Assign Task
+          <button className="btn primary full" type="submit" disabled={unassignedTasks.length === 0 || submitLoading}>
+            {submitLoading ? 'Assigning Task...' : 'Assign Task'}
           </button>
         </form>
       </Modal>

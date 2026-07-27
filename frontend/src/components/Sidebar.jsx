@@ -12,9 +12,9 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
   const employeeItems = [
     { page: '', label: 'Dashboard', icon: '▦' },
     { page: 'attendance', label: 'Attendance', icon: '◷' },
+    { page: 'tasks', label: 'Tasks', icon: '✓' },
     { page: 'daily-updates', label: 'Daily Updates', icon: '✎' },
     { page: 'leave', label: 'Leave', icon: '☷' },
-    { page: 'tasks', label: 'Tasks & Sprint', icon: '✓' },
     { page: 'onboarding', label: 'Onboarding', icon: '↗' },
     { page: 'offboarding', label: 'Offboarding', icon: '↘' },
     { page: 'documents', label: 'Documents', icon: '▤' },
@@ -28,7 +28,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
     { page: 'admin/managers', label: 'Managers', icon: '♟', roles: ['HR', 'SuperAdmin'] },
     { page: 'admin/employees', label: 'Employees', icon: '♙', roles: ['HR', 'Manager', 'SuperAdmin'] },
     { page: 'admin/departments', label: 'Departments', icon: '☷', roles: ['HR', 'SuperAdmin'] },
-    { page: 'projects-sprints', label: 'Projects & Sprints', icon: '☲', roles: ['Manager', 'SuperAdmin'] },
+    { page: 'projects-sprints', label: 'Projects', icon: '☲', roles: ['Manager', 'SuperAdmin'] },
   ];
 
   // Determine which items to display
@@ -41,10 +41,10 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       employeeItems[0], // Dashboard
       employeeItems[1], // Attendance
       { page: 'admin/employees', label: 'Employees', icon: '♙' },
+      { page: 'projects-sprints', label: 'Projects', icon: '☲' },
+      employeeItems[4], // Tasks & Sprint
       employeeItems[2], // Daily Updates
       employeeItems[3], // Leave
-      employeeItems[4], // Tasks & Sprint
-      { page: 'projects-sprints', label: 'Projects & Sprints', icon: '☲' },
       employeeItems[5], // Onboarding
       employeeItems[6], // Offboarding
       employeeItems[7], // Documents
@@ -72,8 +72,8 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       { page: 'admin/managers', label: 'Managers', icon: '♟' },
       { page: 'admin/employees', label: 'Employees', icon: '♙' },
       { page: 'admin/departments', label: 'Departments', icon: '☷' },
+      { page: 'projects-sprints', label: 'Projects', icon: '☲' },
       employeeItems[3], // Leave
-      { page: 'projects-sprints', label: 'Projects & Sprints', icon: '☲' },
       employeeItems[7], // Documents
       employeeItems[8], // Announcements
       employeeItems[9], // Performance
@@ -83,6 +83,26 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
 
   return (
     <aside className={`sidebar ${isOpen ? 'open' : ''}`} id="sidebar">
+      <button 
+        className="close-sidebar-btn" 
+        onClick={toggleSidebar} 
+        style={{
+          position: 'absolute',
+          top: '15px',
+          right: '15px',
+          background: 'none',
+          border: 'none',
+          color: '#adb2bc',
+          fontSize: '24px',
+          cursor: 'pointer',
+          lineHeight: 1,
+          padding: '4px 8px',
+          zIndex: 10
+        }}
+        id="closeSidebarBtn"
+      >
+        ×
+      </button>
       <div className="sidebar-brand brand">
         <img src="/logo.svg" className="logo" alt="Ferret Logo" style={{ objectFit: 'contain' }} />
         <div>

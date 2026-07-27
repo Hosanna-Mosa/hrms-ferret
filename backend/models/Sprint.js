@@ -22,6 +22,9 @@ const SprintSchema = new mongoose.Schema({
     type: String,
     enum: ['planned', 'active', 'completed'],
     default: 'planned'
+  },
+  discussion_output: {
+    type: String
   }
 }, { timestamps: true });
 

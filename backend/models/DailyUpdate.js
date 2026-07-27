@@ -35,7 +35,19 @@ const DailyUpdateSchema = new mongoose.Schema({
   },
   manager_comment: {
     type: String
-  }
+  },
+  employee_comment: {
+    type: String
+  },
+  comments: [{
+    author_name: String,
+    author_role: String,
+    text: String,
+    created_at: {
+      type: Date,
+      default: Date.now
+    }
+  }]
 }, { timestamps: true });
 
 DailyUpdateSchema.index({ employee_id: 1, work_date: 1 }, { unique: true });

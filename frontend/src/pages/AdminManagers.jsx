@@ -7,6 +7,8 @@ const AdminManagers = () => {
   const [managers, setManagers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterDept, setFilterDept] = useState('');
+  const [filterRole, setFilterRole] = useState('');
 
   // Onboarding Manager Form States
   const [isCreating, setIsCreating] = useState(false);
@@ -108,11 +110,17 @@ const AdminManagers = () => {
       .toUpperCase();
   };
 
-  const filteredManagers = managers.filter(m => 
-    m.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    m.employee_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    m.department.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredManagers = managers.filter(m => {
+    const matchesSearch = 
+      m.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.employee_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.department.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesDept = !filterDept || m.department === filterDept;
+    const matchesRole = !filterRole || m.role_name === filterRole;
+    
+    return matchesSearch && matchesDept && matchesRole;
+  });
 
   const activeCount = managers.filter(m => m.is_active).length;
   const inactiveCount = managers.length - activeCount;
@@ -264,14 +272,35 @@ const AdminManagers = () => {
             <h3>System Managers Directory</h3>
             <p>View manager emails, codes, designations, and account status.</p>
           </div>
-          <div className="search small-search">
-            <span>⌕</span>
-            <input
-              type="text"
-              placeholder="Search by name, code..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div className="search small-search" style={{ margin: 0 }}>
+              <span>⌕</span>
+              <input
+                type="text"
+                placeholder="Search by name, code..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <select
+              value={filterDept}
+              onChange={(e) => setFilterDept(e.target.value)}
+              style={{ padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fff', fontSize: '13px', height: '34px', outline: 'none' }}
+            >
+              <option value="">All Departments</option>
+              {Array.from(new Set(managers.map(m => m.department))).filter(Boolean).map(d => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+            <select
+              value={filterRole}
+              onChange={(e) => setFilterRole(e.target.value)}
+              style={{ padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fff', fontSize: '13px', height: '34px', outline: 'none' }}
+            >
+              <option value="">All Roles</option>
+              <option value="Manager">Manager</option>
+              <option value="HR">HR</option>
+            </select>
           </div>
         </div>
 

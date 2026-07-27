@@ -9,6 +9,8 @@ const Leave = () => {
   const navigate = useNavigate();
   const [leaves, setLeaves] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
+  const [filterType, setFilterType] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
   
   // SDE Apply fields
   const [leaveType, setLeaveType] = useState('Casual Leave');
@@ -127,6 +129,12 @@ const Leave = () => {
     }
   });
 
+  const filteredLeaves = leaves.filter(l => {
+    const matchesType = !filterType || l.leave_type === filterType;
+    const matchesStatus = !filterStatus || l.status === filterStatus;
+    return matchesType && matchesStatus;
+  });
+
   const remainingCasual = Math.max(0, totalCasualAllowed - approvedCasual);
   const remainingSick = Math.max(0, totalSickAllowed - approvedSick);
   const usedCount = approvedCasual + approvedSick;
@@ -164,10 +172,32 @@ const Leave = () => {
         </div>
 
         <article className="panel table-panel active">
-          <div className="panel-head pad">
+          <div className="panel-head pad" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
             <div>
               <h3>Team Leave Requests</h3>
               <p>Resolve SDE leave applications.</p>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                style={{ padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fff', fontSize: '13px', outline: 'none' }}
+              >
+                <option value="">All Types</option>
+                <option value="Casual Leave">Casual Leave</option>
+                <option value="Sick Leave">Sick Leave</option>
+                <option value="Unpaid Leave">Unpaid Leave</option>
+              </select>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                style={{ padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fff', fontSize: '13px', outline: 'none' }}
+              >
+                <option value="">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+              </select>
             </div>
           </div>
           <div className="table-wrap">
@@ -184,7 +214,7 @@ const Leave = () => {
                 </tr>
               </thead>
               <tbody>
-                {leaves.map((l) => (
+                {filteredLeaves.map((l) => (
                   <tr 
                     key={l._id}
                     onClick={(e) => {
@@ -229,10 +259,10 @@ const Leave = () => {
                     </td>
                   </tr>
                 ))}
-                {leaves.length === 0 && (
+                {filteredLeaves.length === 0 && (
                   <tr>
                     <td colSpan="7" style={{ textAlign: 'center', opacity: 0.7, padding: '40px' }}>
-                      No incoming leave requests found.
+                      No leave requests found.
                     </td>
                   </tr>
                 )}
@@ -282,10 +312,32 @@ const Leave = () => {
 
       <div className="grid two">
         <article className="panel table-panel">
-          <div className="panel-head pad">
+          <div className="panel-head pad" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
             <div>
               <h3>My Leave Requests</h3>
               <p>Current and past requests.</p>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--line)', background: '#fff', fontSize: '12px', outline: 'none' }}
+              >
+                <option value="">All Types</option>
+                <option value="Casual Leave">Casual Leave</option>
+                <option value="Sick Leave">Sick Leave</option>
+                <option value="Unpaid Leave">Unpaid Leave</option>
+              </select>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--line)', background: '#fff', fontSize: '12px', outline: 'none' }}
+              >
+                <option value="">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+              </select>
             </div>
           </div>
           <div className="table-wrap">
@@ -300,7 +352,7 @@ const Leave = () => {
                 </tr>
               </thead>
               <tbody id="leaveTable">
-                {leaves.map((l) => (
+                {filteredLeaves.map((l) => (
                   <tr key={l._id}>
                     <td>{l.leave_type}</td>
                     <td>{formatDateRange(l.start_date, l.end_date)}</td>
@@ -322,7 +374,7 @@ const Leave = () => {
                     </td>
                   </tr>
                 ))}
-                {leaves.length === 0 && (
+                {filteredLeaves.length === 0 && (
                   <tr>
                     <td colSpan="5" style={{ textAlign: 'center', opacity: 0.7, padding: '30px' }}>
                       No leave requests found.
