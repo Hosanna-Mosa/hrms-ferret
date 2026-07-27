@@ -26,7 +26,7 @@ router.get('/', auth, async (req, res) => {
 
 // POST /api/sprints (Create a sprint - Managers/HR/SuperAdmin only)
 router.post('/', auth, role(['HR', 'Manager', 'SuperAdmin']), async (req, res) => {
-  const { project_id, name, start_date, end_date } = req.body;
+  const { project_id, name, start_date, end_date, discussion_output } = req.body;
 
   if (!project_id || !name || !start_date || !end_date) {
     return res.status(400).json({ message: 'Project ID, sprint name, start date, and end date are required' });
@@ -38,7 +38,8 @@ router.post('/', auth, role(['HR', 'Manager', 'SuperAdmin']), async (req, res) =
       name,
       start_date: new Date(start_date),
       end_date: new Date(end_date),
-      status: 'planned'
+      status: 'planned',
+      discussion_output
     });
 
     const populated = await Sprint.findById(sprint._id)
@@ -54,7 +55,7 @@ router.post('/', auth, role(['HR', 'Manager', 'SuperAdmin']), async (req, res) =
 
 // PATCH /api/sprints/:id (Update sprint status / details - Managers/HR/SuperAdmin only)
 router.patch('/:id', auth, role(['HR', 'Manager', 'SuperAdmin']), async (req, res) => {
-  const { status, name, start_date, end_date } = req.body;
+  const { status, name, start_date, end_date, discussion_output } = req.body;
 
   try {
     const sprint = await Sprint.findById(req.params.id);
@@ -74,6 +75,7 @@ router.patch('/:id', auth, role(['HR', 'Manager', 'SuperAdmin']), async (req, re
     if (name) sprint.name = name;
     if (start_date) sprint.start_date = new Date(start_date);
     if (end_date) sprint.end_date = new Date(end_date);
+    if (discussion_output !== undefined) sprint.discussion_output = discussion_output;
 
     await sprint.save();
 

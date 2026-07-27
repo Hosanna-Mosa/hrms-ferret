@@ -27,11 +27,22 @@ router.post('/', auth, async (req, res) => {
   const { title, description, sprint, due_date, story_points, status, priority, employee_id, project_id, sprint_id } = req.body;
   try {
     const count = await Task.countDocuments({});
-    const key = `FER-${100 + count + 1}`;
+    let key = `FER-${100 + count + 1}`;
+    if (project_id) {
+      const Project = require('../models/Project');
+      const proj = await Project.findById(project_id).exec();
+      if (proj && proj.key) {
+        const projTaskCount = await Task.countDocuments({ project_id });
+        key = `${proj.key}-${100 + projTaskCount + 1}`;
+      }
+    }
 
-    const assignedEmpId = (req.user.role === 'Manager' || req.user.role === 'HR' || req.user.role === 'SuperAdmin') && employee_id 
-      ? employee_id 
-      : req.user.employeeId;
+    let assignedEmpId = null;
+    if (req.user.role === 'Manager' || req.user.role === 'HR' || req.user.role === 'SuperAdmin') {
+      assignedEmpId = employee_id || null;
+    } else {
+      assignedEmpId = req.user.employeeId;
+    }
 
     const newTask = await Task.create({
       external_key: key,
@@ -50,9 +61,9 @@ router.post('/', auth, async (req, res) => {
 
     // Fetch details to send email
     const Employee = require('../models/Employee');
-    const employee = await Employee.findById(assignedEmpId).populate('user_id').exec();
+    const employee = assignedEmpId ? await Employee.findById(assignedEmpId).populate('user_id').exec() : null;
     const manager = await Employee.findById(req.user.employeeId).populate('user_id').exec();
-    if (employee && employee.user_id && employee.user_id.work_email && req.user.employeeId !== assignedEmpId.toString()) {
+    if (employee && employee.user_id && employee.user_id.work_email && req.user.employeeId !== assignedEmpId?.toString()) {
       const { sendMail } = require('../services/emailService');
       try {
         await sendMail({
@@ -183,10 +194,26 @@ router.get('/manager/all', auth, role(['HR', 'Manager', 'SuperAdmin']), async (r
     if (sprint_id) query.sprint_id = sprint_id;
 
     if (req.user.role === 'Manager') {
+      const Project = require('../models/Project');
       const Employee = require('../models/Employee');
-      const reports = await Employee.find({ manager_id: req.user.employeeId }).select('_id').exec();
-      const reportIds = reports.map(r => r._id);
-      query.employee_id = { $in: reportIds };
+      
+      let isProjectLead = false;
+      if (project_id) {
+        const proj = await Project.findById(project_id).exec();
+        if (proj && proj.lead_id && proj.lead_id.toString() === req.user.employeeId.toString()) {
+          isProjectLead = true;
+        }
+      }
+
+      if (!isProjectLead) {
+        const reports = await Employee.find({ manager_id: req.user.employeeId }).select('_id').exec();
+        const reportIds = reports.map(r => r._id);
+        query.$or = [
+          { employee_id: { $in: reportIds } },
+          { employee_id: req.user.employeeId },
+          { employee_id: null }
+        ];
+      }
     }
     const tasks = await Task.find(query)
       .populate('employee_id')
@@ -195,7 +222,7 @@ router.get('/manager/all', auth, role(['HR', 'Manager', 'SuperAdmin']), async (r
       
     const response = tasks.map(t => ({
       ...t.toObject(),
-      full_name: t.employee_id ? t.employee_id.full_name : 'Unknown'
+      full_name: t.employee_id ? t.employee_id.full_name : 'Unassigned'
     }));
     
     res.json(response);
@@ -205,47 +232,93 @@ router.get('/manager/all', auth, role(['HR', 'Manager', 'SuperAdmin']), async (r
   }
 });
 
-// PATCH /api/tasks/manager/:id (Manager updating status/details of a reportee's task)
+// PATCH /api/tasks/manager/:id (Manager updating status/details/assignee of a task)
 router.patch('/manager/:id', auth, role(['HR', 'Manager', 'SuperAdmin']), async (req, res) => {
   const taskId = req.params.id;
-  const { status, title, description, priority, story_points, due_date } = req.body;
+  const { status, title, description, priority, story_points, due_date, employee_id } = req.body;
   try {
+    const taskObj = await Task.findById(taskId).exec();
+    if (!taskObj) {
+      return res.status(404).json({ message: 'Task not found' });
+    }
+
     if (req.user.role === 'Manager') {
+      const Project = require('../models/Project');
       const Employee = require('../models/Employee');
-      const taskObj = await Task.findById(taskId).populate('employee_id').exec();
-      if (!taskObj || !taskObj.employee_id || taskObj.employee_id.manager_id.toString() !== req.user.employeeId.toString()) {
-        return res.status(403).json({ message: 'Not authorized to update this task' });
+
+      // 1. Check if user is the project lead of the task's project
+      let isAuthorized = false;
+      if (taskObj.project_id) {
+        const proj = await Project.findById(taskObj.project_id).exec();
+        if (proj && proj.lead_id && proj.lead_id.toString() === req.user.employeeId.toString()) {
+          isAuthorized = true;
+        }
+      }
+
+      // 2. Otherwise, check if the task is currently assigned to a reportee,
+      // or if we are assigning it to a reportee
+      if (!isAuthorized) {
+        const reports = await Employee.find({ manager_id: req.user.employeeId }).select('_id').exec();
+        const reportIds = reports.map(r => r._id.toString());
+        
+        const currentAssigneeId = taskObj.employee_id ? taskObj.employee_id.toString() : null;
+        const targetAssigneeId = employee_id || null;
+
+        const isCurrentReportee = currentAssigneeId && reportIds.includes(currentAssigneeId);
+        const isTargetReportee = targetAssigneeId && reportIds.includes(targetAssigneeId);
+
+        // A manager is authorized if the task is currently assigned to their reportee, 
+        // OR they are assigning an unassigned task to one of their reportees.
+        if (isCurrentReportee || (currentAssigneeId === null && isTargetReportee)) {
+          isAuthorized = true;
+        }
+      }
+
+      if (!isAuthorized) {
+        return res.status(403).json({ message: 'Not authorized to update or assign this task' });
       }
     }
-    
+
+    const updateFields = {
+      status,
+      title,
+      description,
+      priority,
+      story_points,
+      due_date: due_date ? new Date(due_date) : undefined
+    };
+
+    if (employee_id !== undefined) {
+      updateFields.employee_id = employee_id || null;
+    }
+
+    const cleanUpdateFields = {};
+    for (const key in updateFields) {
+      if (updateFields[key] !== undefined) {
+        cleanUpdateFields[key] = updateFields[key];
+      }
+    }
+
     const updated = await Task.findByIdAndUpdate(
       taskId,
-      {
-        $set: {
-          status,
-          title,
-          description,
-          priority,
-          story_points,
-          due_date: due_date ? new Date(due_date) : undefined
-        }
-      },
+      { $set: cleanUpdateFields },
       { new: true }
     );
+
     // Fetch details to send email
     const Employee = require('../models/Employee');
-    const employee = await Employee.findById(updated.employee_id).populate('user_id').exec();
+    const employee = updated.employee_id ? await Employee.findById(updated.employee_id).populate('user_id').exec() : null;
     const manager = await Employee.findById(req.user.employeeId).populate('user_id').exec();
     if (employee && employee.user_id && employee.user_id.work_email && req.user.employeeId !== employee._id.toString()) {
       const { sendMail } = require('../services/emailService');
       try {
         await sendMail({
           to: employee.user_id.work_email,
-          subject: `Task Updated: ${updated.title}`,
+          subject: `Task Assigned/Updated: ${updated.title}`,
           html: `
             <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; border: 1px solid #e1e3e6; padding: 24px; border-radius: 12px;">
               <h3 style="color: #12141a; margin-top: 0;">Hello, ${employee.full_name}</h3>
-              <p>Your task has been updated by <strong>${manager?.full_name || 'Manager'}</strong>.</p>
+              <p>You have been assigned or updated on a task by <strong>${manager?.full_name || 'Manager'}</strong>.</p>
               <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
                 <tr>
                   <td style="padding: 8px 0; font-weight: bold; width: 120px;">Task Key:</td>

@@ -62,10 +62,10 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
     return res.status(400).json({ message: 'No file uploaded' });
   }
 
-  const { document_type, target_employee_id } = req.body;
+  const { document_type, target_employee_id, project_id } = req.body;
   const targetEmpId = (req.user.role === 'HR' || req.user.role === 'SuperAdmin') && target_employee_id 
     ? target_employee_id 
-    : req.user.employeeId;
+    : (project_id ? null : req.user.employeeId);
 
   const localFilePath = path.join(uploadDir, req.file.filename);
   let finalStorageKey = req.file.filename;
@@ -86,7 +86,8 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
     }
 
     const newDoc = await Document.create({
-      employee_id: targetEmpId,
+      employee_id: targetEmpId || null,
+      project_id: project_id || null,
       document_type: document_type || 'Uncategorized',
       storage_key: finalStorageKey,
       file_name: req.file.originalname,
@@ -137,13 +138,32 @@ router.get('/:id/download', auth, async (req, res) => {
     }
 
     // Check auth permission
-    if (req.user.role !== 'HR' && req.user.role !== 'SuperAdmin' && doc.employee_id.toString() !== req.user.employeeId.toString()) {
-      return res.status(403).json({ message: 'Access denied' });
+    if (req.user.role !== 'HR' && req.user.role !== 'SuperAdmin') {
+      if (doc.employee_id && doc.employee_id.toString() !== req.user.employeeId.toString()) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
     }
 
-    // If storage_key is a URL (starts with http/https), redirect to the cloud file
+    // If storage_key is a URL (starts with http/https), proxy/stream the file
     if (doc.storage_key.startsWith('http://') || doc.storage_key.startsWith('https://')) {
-      return res.redirect(doc.storage_key);
+      const https = require('https');
+      const http = require('http');
+      const client = doc.storage_key.startsWith('https://') ? https : http;
+
+      client.get(doc.storage_key, (response) => {
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          res.setHeader('Content-Type', response.headers['content-type'] || doc.mime_type || 'application/pdf');
+          res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(doc.file_name)}"`);
+          response.pipe(res);
+        } else {
+          console.warn(`Cloudinary proxy returned status ${response.statusCode}, redirecting...`);
+          res.redirect(doc.storage_key);
+        }
+      }).on('error', (err) => {
+        console.error('Error proxying cloud document:', err);
+        res.redirect(doc.storage_key);
+      });
+      return;
     }
 
     const filePath = path.join(uploadDir, doc.storage_key);
@@ -215,6 +235,19 @@ router.get('/admin/pending', auth, role(['HR', 'SuperAdmin']), async (req, res) 
     res.json(response);
   } catch (error) {
     console.error('Error listing pending documents:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/documents/project/:projectId
+router.get('/project/:projectId', auth, async (req, res) => {
+  try {
+    const docs = await Document.find({ project_id: req.params.projectId })
+      .sort({ uploaded_at: -1 })
+      .exec();
+    res.json(docs);
+  } catch (error) {
+    console.error('Error fetching project documents:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

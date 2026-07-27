@@ -5,6 +5,10 @@ const DocumentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Employee'
   },
+  project_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Project'
+  },
   document_type: {
     type: String
   },

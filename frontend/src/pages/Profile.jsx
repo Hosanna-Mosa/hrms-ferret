@@ -122,7 +122,7 @@ const Profile = () => {
             <img 
               src={employee.profile_pic.startsWith('http') ? employee.profile_pic : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${employee.profile_pic}`} 
               alt={employee.full_name} 
-              style={{ width: '100px', height: '100px', borderRadius: '50%', objectFit: 'cover', marginBottom: '15px' }}
+              style={{ width: '100px', height: '100px', borderRadius: '50%', objectFit: 'cover', display: 'block', margin: '0 auto 15px' }}
             />
           ) : (
             <div className="large-avatar" style={{ overflow: 'hidden', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px', borderRadius: '50%' }}>
@@ -135,7 +135,7 @@ const Profile = () => {
           )}
 
           {editing && (
-            <label className="btn outline small" style={{ cursor: 'pointer', marginBottom: '15px', padding: '6px 12px', fontSize: '11px', display: 'inline-block' }}>
+            <label className="btn outline small" style={{ cursor: 'pointer', display: 'block', margin: '0 auto 15px', width: 'fit-content', padding: '6px 12px', fontSize: '11px' }}>
               Change Photo
               <input 
                 type="file" 

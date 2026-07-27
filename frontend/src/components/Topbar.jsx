@@ -16,23 +16,12 @@ const Topbar = ({ onMenuClick }) => {
       .toUpperCase();
   };
 
-  const handleSearch = (e) => {
-    // If they type, just show a message or handle search
-  };
-
   return (
     <header className="topbar">
       <button className="menu-btn" id="menuBtn" onClick={onMenuClick}>
         ☰
       </button>
-      <div className="search">
-        <span>⌕</span>
-        <input 
-          id="globalSearch" 
-          placeholder="Search people, documents, tasks..."
-          onChange={handleSearch}
-        />
-      </div>
+      <div style={{ flex: 1 }}></div>
       <div className="top-actions">
 
         {user && (

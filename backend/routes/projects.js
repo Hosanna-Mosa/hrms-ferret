@@ -19,7 +19,7 @@ router.get('/', auth, async (req, res) => {
 
 // POST /api/projects (Create a project - HR/Admin only)
 router.post('/', auth, role(['HR', 'SuperAdmin']), async (req, res) => {
-  const { name, key, description, lead_id } = req.body;
+  const { name, key, description, lead_id, github_repo } = req.body;
 
   if (!name || !key) {
     return res.status(400).json({ message: 'Project name and key are required' });
@@ -35,7 +35,8 @@ router.post('/', auth, role(['HR', 'SuperAdmin']), async (req, res) => {
       name,
       key: key.toUpperCase(),
       description,
-      lead_id: lead_id || null
+      lead_id: lead_id || null,
+      github_repo: github_repo || ''
     });
 
     const populated = await Project.findById(project._id)

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { apiRequest } from '../utils/api';
+import { apiRequest, getAccessToken } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
 const Documents = () => {
@@ -153,7 +153,7 @@ const Documents = () => {
                 <small>{new Date(doc.uploaded_at).toLocaleDateString()}</small>
                 <button 
                   className="btn outline small" 
-                  onClick={() => window.open(`/api/documents/${doc._id}/download`, '_blank')}
+                  onClick={() => window.open(`${import.meta.env.VITE_API_URL || ''}/api/documents/${doc._id}/download?token=${getAccessToken() || ''}`, '_blank')}
                 >
                   Download
                 </button>

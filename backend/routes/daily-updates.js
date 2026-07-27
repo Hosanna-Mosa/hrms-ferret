@@ -83,27 +83,64 @@ router.patch('/manager/:id', auth, role(['HR', 'Manager', 'SuperAdmin']), async 
   const { manager_status, manager_comment } = req.body;
 
   try {
-    const log = await DailyUpdate.findByIdAndUpdate(
-      updateId,
-      {
-        $set: {
-          manager_status,
-          manager_comment
-        }
-      },
-      { new: true }
-    ).exec();
+    const manager = await Employee.findById(req.user.employeeId).exec();
+    const managerName = manager ? manager.full_name : 'Manager';
 
+    const log = await DailyUpdate.findById(updateId).exec();
     if (!log) {
       return res.status(404).json({ message: 'Daily update record not found' });
     }
 
+    log.manager_status = manager_status;
+    if (manager_comment) {
+      log.manager_comment = manager_comment;
+      log.comments.push({
+        author_name: managerName,
+        author_role: req.user.role,
+        text: manager_comment,
+        created_at: new Date()
+      });
+    }
+
+    await log.save();
     res.json(log);
   } catch (error) {
     console.error('Error resolving daily update:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+// PATCH /api/daily-updates/:id/acknowledge
+router.patch('/:id/acknowledge', auth, async (req, res) => {
+  const updateId = req.params.id;
+  const { employee_comment } = req.body;
+
+  try {
+    const emp = await Employee.findById(req.user.employeeId).exec();
+    const empName = emp ? emp.full_name : 'Employee';
+
+    const log = await DailyUpdate.findOne({ _id: updateId, employee_id: req.user.employeeId }).exec();
+    if (!log) {
+      return res.status(404).json({ message: 'Daily update record not found or not authorized' });
+    }
+
+    log.employee_comment = employee_comment;
+    log.manager_status = 'pending';
+    log.comments.push({
+      author_name: empName,
+      author_role: req.user.role,
+      text: employee_comment,
+      created_at: new Date()
+    });
+
+    await log.save();
+    res.json(log);
+  } catch (error) {
+    console.error('Error acknowledging daily update:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 
 // GET /api/daily-updates/employee/:employeeId
 router.get('/employee/:employeeId', auth, role(['HR', 'Manager', 'SuperAdmin']), async (req, res) => {

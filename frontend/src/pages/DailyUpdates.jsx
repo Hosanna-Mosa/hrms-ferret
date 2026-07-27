@@ -14,20 +14,37 @@ const DailyUpdates = () => {
   const [blocked, setBlocked] = useState('');
   const [tomorrowPlan, setTomorrowPlan] = useState('');
   const [statusText, setStatusText] = useState('Not submitted');
+  const [projects, setProjects] = useState([]);
+  const [sprints, setSprints] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [selectedSprintId, setSelectedSprintId] = useState('');
+  const [assignedTasks, setAssignedTasks] = useState([]);
+  const [submitLoading, setSubmitLoading] = useState(false);
 
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedUpdate, setSelectedUpdate] = useState(null);
 
+  const [ackComment, setAckComment] = useState('');
+  const [managerCommentText, setManagerCommentText] = useState('');
+  const [showCommentBox, setShowCommentBox] = useState(false);
+
   const handleOpenDetail = (update) => {
     setSelectedUpdate(update);
+    setAckComment('');
+    setManagerCommentText('');
+    setShowCommentBox(false);
     setDetailModalOpen(true);
   };
 
-  const isManager = user?.role === 'Manager';
+  const hasAccessToLogs = user && ['Manager', 'HR', 'SuperAdmin'].includes(user.role);
+  const [employeesList, setEmployeesList] = useState([]);
+  const [filterEmployeeId, setFilterEmployeeId] = useState('');
+  const [filterDate, setFilterDate] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
 
   const fetchUpdates = async () => {
     try {
-      const endpoint = isManager ? '/api/daily-updates/manager/all' : '/api/daily-updates/me';
+      const endpoint = hasAccessToLogs ? '/api/daily-updates/manager/all' : '/api/daily-updates/me';
       const res = await apiRequest(endpoint);
       if (res.ok) {
         const data = await res.json();
@@ -38,15 +55,103 @@ const DailyUpdates = () => {
     }
   };
 
+  const fetchEmployeesList = async () => {
+    if (!hasAccessToLogs || !user) return;
+    try {
+      const res = await apiRequest('/api/employees/admin/employees');
+      if (res.ok) {
+        const data = await res.json();
+        if (user.role === 'Manager') {
+          const filtered = data.filter(e => e.manager_id && (e.manager_id._id || e.manager_id) === user.employeeId);
+          setEmployeesList(filtered);
+        } else if (user.role === 'HR') {
+          const filtered = data.filter(e => e.role_name === 'Employee' || e.role_name === 'Manager');
+          setEmployeesList(filtered);
+        } else {
+          setEmployeesList(data);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchProjects = async () => {
+    try {
+      const res = await apiRequest('/api/projects');
+      if (res.ok) {
+        const data = await res.json();
+        setProjects(data);
+      }
+    } catch (err) {
+      console.error('Error fetching projects:', err);
+    }
+  };
+
+  const fetchSprints = async (projectId) => {
+    if (!projectId) {
+      setSprints([]);
+      return;
+    }
+    try {
+      const res = await apiRequest(`/api/sprints?project_id=${projectId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSprints(data);
+      }
+    } catch (err) {
+      console.error('Error fetching sprints:', err);
+    }
+  };
+
+  const fetchAssignedTasks = async () => {
+    if (!selectedProjectId) {
+      setAssignedTasks([]);
+      return;
+    }
+    try {
+      let url = `/api/tasks/me?project_id=${selectedProjectId}`;
+      if (selectedSprintId) {
+        url += `&sprint_id=${selectedSprintId}`;
+      }
+      const res = await apiRequest(url);
+      if (res.ok) {
+        const data = await res.json();
+        setAssignedTasks(data);
+      }
+    } catch (err) {
+      console.error('Error fetching assigned tasks:', err);
+    }
+  };
+
   useEffect(() => {
     if (user) {
       fetchUpdates();
+      if (hasAccessToLogs) {
+        fetchEmployeesList();
+      } else {
+        fetchProjects();
+      }
     }
   }, [user]);
 
+  useEffect(() => {
+    if (!hasAccessToLogs) {
+      fetchSprints(selectedProjectId);
+      setSelectedSprintId('');
+      setAssignedTasks([]);
+    }
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (!hasAccessToLogs) {
+      fetchAssignedTasks();
+    }
+  }, [selectedProjectId, selectedSprintId]);
+
   // Fetch attendance hours and populate fields based on selected date (Only for SDEs)
   useEffect(() => {
-    if (isManager || !user) return;
+    if (hasAccessToLogs || !user) return;
     
     const existingUpdate = updates.find(u => u.work_date.slice(0, 10) === date);
     if (existingUpdate) {
@@ -86,7 +191,7 @@ const DailyUpdates = () => {
       };
       fetchAttendanceHours();
     }
-  }, [date, updates, isManager, user]);
+  }, [date, updates, hasAccessToLogs, user]);
 
   const handleSaveDraft = () => {
     alert('Daily update draft saved locally.');
@@ -94,6 +199,7 @@ const DailyUpdates = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmitLoading(true);
     try {
       const res = await apiRequest('/api/daily-updates', {
         method: 'POST',
@@ -112,15 +218,17 @@ const DailyUpdates = () => {
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      setSubmitLoading(false);
     }
   };
 
-  const handleResolveUpdate = async (id, manager_status) => {
-    let comment = '';
-    if (manager_status === 'needs_changes') {
+  const handleResolveUpdate = async (id, manager_status, customComment) => {
+    let comment = customComment;
+    if (manager_status === 'needs_changes' && !comment) {
       comment = prompt('Please enter a comment detailing the requested changes:');
       if (!comment) return;
-    } else {
+    } else if (manager_status === 'approved') {
       if (!confirm('Are you sure you want to approve this work log?')) return;
     }
 
@@ -141,24 +249,105 @@ const DailyUpdates = () => {
     }
   };
 
+  const handleAcknowledge = async (id) => {
+    try {
+      const res = await apiRequest(`/api/daily-updates/${id}/acknowledge`, {
+        method: 'PATCH',
+        body: JSON.stringify({ employee_comment: ackComment })
+      });
+      if (res.ok) {
+        fetchUpdates();
+        setAckComment('');
+        setDetailModalOpen(false);
+        alert('Your response has been sent to the manager.');
+      } else {
+        const err = await res.json();
+        alert(err.message || 'Failed to submit response.');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const maxDate = new Date().toISOString().slice(0, 10);
 
-  if (isManager) {
+  if (hasAccessToLogs) {
+    const filteredUpdates = updates.filter(u => {
+      if (filterEmployeeId && u.employee_id?._id !== filterEmployeeId && u.employee_id !== filterEmployeeId) {
+        return false;
+      }
+      if (filterDate && u.work_date.slice(0, 10) !== filterDate) {
+        return false;
+      }
+      if (filterStatus && u.manager_status !== filterStatus) {
+        return false;
+      }
+      return true;
+    });
+
     return (
       <div>
         <div className="page-head">
           <div>
             <span className="eyebrow">TEAM MANAGEMENT</span>
             <h1>Team Work Logs</h1>
-            <p>Review progress logs, track hours, and approve daily updates submitted by your reporting SDEs.</p>
+            <p>Review progress logs, track hours, and approve daily updates submitted by reporting team members.</p>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', alignItems: 'center', background: '#f8fafc', padding: '12px 18px', borderRadius: '10px', border: '1px solid var(--line)', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--muted)' }}>Employee:</span>
+            <select 
+              value={filterEmployeeId} 
+              onChange={(e) => setFilterEmployeeId(e.target.value)} 
+              style={{ width: '220px', padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fff', fontSize: '12px', marginTop: 0 }}
+            >
+              <option value="">All Employees</option>
+              {employeesList.map(e => (
+                <option key={e._id} value={e._id}>{e.full_name} ({e.role_name || 'SDE'})</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--muted)' }}>Date:</span>
+            <input 
+              type="date" 
+              value={filterDate} 
+              onChange={(e) => setFilterDate(e.target.value)} 
+              style={{ width: '150px', padding: '5px 10px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fff', fontSize: '12px', marginTop: 0 }}
+            />
+            {filterDate && (
+              <button 
+                className="text-btn" 
+                onClick={() => setFilterDate('')} 
+                style={{ fontSize: '11px', cursor: 'pointer' }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--muted)' }}>Status:</span>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              style={{ width: '150px', padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fff', fontSize: '12px', marginTop: 0 }}
+            >
+              <option value="">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="needs_changes">Needs Changes</option>
+            </select>
           </div>
         </div>
 
         <article className="panel table-panel active">
           <div className="panel-head pad">
             <div>
-              <h3>Direct Reports Daily Updates</h3>
-              <p>Verify tasks completed, in-progress items, and blockers.</p>
+              <h3>Team Daily Updates ({filteredUpdates.length})</h3>
+              <p>Previous daily work logs submitted. Click any row to view full details and perform approval actions.</p>
             </div>
           </div>
           <div className="table-wrap">
@@ -167,45 +356,24 @@ const DailyUpdates = () => {
                 <tr>
                   <th>Employee</th>
                   <th>Date</th>
-                  <th>Hours</th>
-                  <th>Completed & In-Progress Tasks</th>
-                  <th>Blockers</th>
                   <th>Status</th>
-                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {updates.map((u) => (
-                  <tr key={u._id}>
+                {filteredUpdates.map((u) => (
+                  <tr 
+                    key={u._id} 
+                    onClick={() => handleOpenDetail(u)} 
+                    style={{ cursor: 'pointer' }}
+                    title="Click to view details and actions"
+                  >
                     <td>
                       <div>
                         <b>{u.full_name || 'Team SDE'}</b>
                         <small style={{ color: 'var(--muted)', display: 'block', fontSize: '8px' }}>{u.department}</small>
                       </div>
                     </td>
-                    <td>{new Date(u.work_date).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</td>
-                    <td><strong>{u.hours_worked}h</strong></td>
-                    <td>
-                      <div>
-                        <div style={{ marginBottom: '4px' }}>
-                          <span style={{ fontSize: '8px', color: 'var(--green)', fontWeight: 'bold' }}>✓ COMPLETED:</span>
-                          <p style={{ margin: '2px 0 6px', fontSize: '9px', whiteSpace: 'pre-wrap' }}>{u.completed}</p>
-                        </div>
-                        <div>
-                          <span style={{ fontSize: '8px', color: 'var(--blue)', fontWeight: 'bold' }}>⚡ IN PROGRESS:</span>
-                          <p style={{ margin: '2px 0', fontSize: '9px', whiteSpace: 'pre-wrap' }}>{u.in_progress || 'None'}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      {u.blocked ? (
-                        <span style={{ color: 'var(--red)', fontSize: '9px', fontWeight: 'bold', whiteSpace: 'pre-wrap' }}>
-                          ⚠️ {u.blocked}
-                        </span>
-                      ) : (
-                        <em style={{ opacity: 0.5, fontSize: '9px' }}>None</em>
-                      )}
-                    </td>
+                    <td>{new Date(u.work_date).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</td>
                     <td>
                       <span className={`pill ${
                         u.manager_status === 'approved' ? 'success' : 
@@ -219,32 +387,12 @@ const DailyUpdates = () => {
                         </small>
                       )}
                     </td>
-                    <td>
-                      {u.manager_status === 'pending' ? (
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <button 
-                            className="btn primary small" 
-                            style={{ background: 'var(--green)', borderColor: 'var(--green)' }}
-                            onClick={() => handleResolveUpdate(u._id, 'approved')}
-                          >
-                            Approve
-                          </button>
-                          <button 
-                            className="btn primary small" 
-                            style={{ background: 'var(--red)', borderColor: 'var(--red)' }}
-                            onClick={() => handleResolveUpdate(u._id, 'needs_changes')}
-                          >
-                            Need Changes
-                          </button>
-                        </div>
-                      ) : '—'}
-                    </td>
                   </tr>
                 ))}
-                {updates.length === 0 && (
+                {filteredUpdates.length === 0 && (
                   <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', opacity: 0.7, padding: '40px' }}>
-                      No daily updates submitted by reportees yet.
+                    <td colSpan="3" style={{ textAlign: 'center', opacity: 0.7, padding: '40px' }}>
+                      No daily updates matched the filter criteria.
                     </td>
                   </tr>
                 )}
@@ -252,9 +400,176 @@ const DailyUpdates = () => {
             </table>
           </div>
         </article>
+
+        {/* View Daily Update Details Modal (Managers/HR/SuperAdmin) */}
+        <Modal isOpen={detailModalOpen} onClose={() => setDetailModalOpen(false)}>
+          {selectedUpdate && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '1px solid var(--line)', paddingBottom: '10px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--muted)' }}>
+                  DAILY WORK UPDATE ({selectedUpdate.full_name || 'Team SDE'})
+                </span>
+                <span className={`pill ${
+                  selectedUpdate.manager_status === 'approved' ? 'success' : 
+                  selectedUpdate.manager_status === 'pending' ? 'warning' : 'danger'
+                }`}>
+                  {selectedUpdate.manager_status.toUpperCase()}
+                </span>
+              </div>
+              
+              <h2 style={{ fontSize: '20px', marginBottom: '18px' }}>
+                {new Date(selectedUpdate.work_date).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+              </h2>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
+                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+                  <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '5px' }}>Today's Tasks</h4>
+                  <p style={{ fontSize: '12px', margin: 0, whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>
+                    {selectedUpdate.todays_tasks || 'None'}
+                  </p>
+                </div>
+
+                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+                  <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '5px' }}>Completed</h4>
+                  <p style={{ fontSize: '12px', margin: 0, whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>
+                    {selectedUpdate.completed || 'None'}
+                  </p>
+                </div>
+
+                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+                  <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '5px' }}>In Progress</h4>
+                  <p style={{ fontSize: '12px', margin: 0, whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>
+                    {selectedUpdate.in_progress || 'None'}
+                  </p>
+                </div>
+
+                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+                  <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '5px' }}>Blocked</h4>
+                  <p style={{ fontSize: '12px', margin: 0, whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>
+                    {selectedUpdate.blocked || 'None'}
+                  </p>
+                </div>
+
+                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+                  <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '5px' }}>Tomorrow Plan</h4>
+                  <p style={{ fontSize: '12px', margin: 0, whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>
+                    {selectedUpdate.tomorrow_plan || 'None'}
+                  </p>
+                </div>
+
+                {selectedUpdate.manager_comment && !selectedUpdate.comments?.length && (
+                  <div style={{ background: '#fff0f2', padding: '12px', borderRadius: '8px', border: '1px solid var(--red)' }}>
+                    <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--red)', marginBottom: '5px' }}>Manager Feedback</h4>
+                    <p style={{ fontSize: '12px', margin: 0, whiteSpace: 'pre-wrap', color: 'var(--red)', fontWeight: 'bold' }}>
+                      {selectedUpdate.manager_comment}
+                    </p>
+                  </div>
+                )}
+
+                {selectedUpdate.employee_comment && !selectedUpdate.comments?.length && (
+                  <div style={{ background: '#eef8f4', padding: '12px', borderRadius: '8px', border: '1px solid var(--green)', marginTop: '10px' }}>
+                    <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--green)', marginBottom: '5px' }}>Employee Acknowledgement</h4>
+                    <p style={{ fontSize: '12px', margin: 0, whiteSpace: 'pre-wrap', color: 'var(--green)', fontWeight: 'bold' }}>
+                      {selectedUpdate.employee_comment}
+                    </p>
+                  </div>
+                )}
+
+                {selectedUpdate.comments && selectedUpdate.comments.length > 0 && (
+                  <div style={{ borderTop: '1px solid var(--line)', paddingTop: '15px', marginTop: '10px' }}>
+                    <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '10px' }}>
+                      Feedback Conversation History
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {selectedUpdate.comments.map((c, idx) => {
+                        const isSelf = c.author_role === user.role;
+                        return (
+                          <div 
+                            key={idx} 
+                            style={{ 
+                              alignSelf: isSelf ? 'flex-end' : 'flex-start',
+                              maxWidth: '85%',
+                              background: isSelf ? '#f0f4ff' : '#f1f3f5',
+                              border: isSelf ? '1px solid #d0e0ff' : '1px solid #e1e3e6',
+                              padding: '10px 12px',
+                              borderRadius: '12px',
+                              fontSize: '12px'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '4px', fontSize: '9px', fontWeight: 'bold', color: 'var(--muted)' }}>
+                              <span>{c.author_name} ({c.author_role})</span>
+                              <span>{new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                            <p style={{ margin: 0, whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>{c.text}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {selectedUpdate.manager_status !== 'approved' && (
+                <div style={{ marginTop: '15px', borderTop: '1px solid var(--line)', paddingTop: '15px' }}>
+                  <h4 style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--ink)', marginBottom: '8px' }}>
+                    Manager Feedback / Reply
+                  </h4>
+                  <textarea 
+                    rows="3"
+                    value={managerCommentText}
+                    onChange={(e) => setManagerCommentText(e.target.value)}
+                    placeholder="Provide details about what needs to be changed, or reply to employee..."
+                    style={{ width: '100%', padding: '8px', borderRadius: '8px', border: '1px solid var(--line)', fontSize: '12px', boxSizing: 'border-box' }}
+                  />
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                    <button 
+                      className="btn primary" 
+                      style={{ background: 'var(--green)', borderColor: 'var(--green)', flex: 1, color: '#fff' }}
+                      onClick={() => {
+                        handleResolveUpdate(selectedUpdate._id, 'approved', managerCommentText);
+                        setDetailModalOpen(false);
+                      }}
+                    >
+                      Approve Log
+                    </button>
+                    <button 
+                      className="btn primary" 
+                      style={{ background: 'var(--red)', borderColor: 'var(--red)', flex: 1, color: '#fff' }}
+                      onClick={() => {
+                        if (!managerCommentText.trim()) {
+                          alert('Please enter a feedback comment to request changes.');
+                          return;
+                        }
+                        handleResolveUpdate(selectedUpdate._id, 'needs_changes', managerCommentText);
+                        setDetailModalOpen(false);
+                      }}
+                    >
+                      Request Changes
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                <button className="btn outline" onClick={() => setDetailModalOpen(false)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+        </Modal>
       </div>
     );
   }
+
+  const filteredEmployeeUpdates = updates.filter(u => {
+    if (filterDate && u.work_date.slice(0, 10) !== filterDate) {
+      return false;
+    }
+    if (filterStatus && u.manager_status !== filterStatus) {
+      return false;
+    }
+    return true;
+  });
 
   return (
     <div>
@@ -284,6 +599,92 @@ const DailyUpdates = () => {
                 />
               </label>
             </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+              <label style={{ margin: 0 }}>
+                Project
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fff', fontSize: '13px', marginTop: '5px' }}
+                >
+                  <option value="">-- Select Project --</option>
+                  {projects.map(p => (
+                    <option key={p._id} value={p._id}>{p.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={{ margin: 0 }}>
+                Sprint
+                <select
+                  value={selectedSprintId}
+                  onChange={(e) => setSelectedSprintId(e.target.value)}
+                  disabled={!selectedProjectId}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fff', fontSize: '13px', marginTop: '5px' }}
+                >
+                  <option value="">-- Select Sprint --</option>
+                  {sprints.map(s => (
+                    <option key={s._id} value={s._id}>{s.name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {selectedProjectId && (
+              <div style={{ 
+                background: '#f8fafc', 
+                border: '1px solid var(--line)', 
+                borderRadius: '8px', 
+                padding: '12px', 
+                marginBottom: '15px',
+                maxHeight: '160px',
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }}>
+                <span style={{ fontSize: '10px', fontWeight: 'bold', color: 'var(--muted)', letterSpacing: '0.5px' }}>ASSIGNED SPRINT TASKS</span>
+                {assignedTasks.length > 0 ? (
+                  assignedTasks.map(t => {
+                    const isChecked = todaysTasks.includes(t.title);
+                    return (
+                      <label key={t._id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', margin: 0, fontWeight: 'normal', cursor: 'pointer' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              const currentTasks = todaysTasks.trim() ? todaysTasks.split('\n') : [];
+                              if (!currentTasks.some(line => line.includes(t.title))) {
+                                const newTaskLine = `- [${t.external_key || 'TASK'}] ${t.title}`;
+                                setTodaysTasks([...currentTasks, newTaskLine].join('\n'));
+                              }
+                            } else {
+                              const currentTasks = todaysTasks.split('\n');
+                              const filtered = currentTasks.filter(line => !line.includes(t.title));
+                              setTodaysTasks(filtered.join('\n'));
+                            }
+                          }}
+                          style={{ width: 'auto', margin: 0 }}
+                        />
+                        <span style={{ color: 'var(--ink)' }}>
+                          <strong>[{t.external_key || 'TASK'}]</strong> {t.title} 
+                          <span style={{ marginLeft: '6px', fontSize: '10px', color: t.status === 'done' ? 'var(--green)' : 'var(--muted)', textTransform: 'uppercase', fontWeight: 'bold' }}>
+                            ({t.status})
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })
+                ) : (
+                  <span style={{ fontSize: '12px', color: 'var(--muted)', fontStyle: 'italic' }}>
+                    No assigned tasks found for this project & sprint.
+                  </span>
+                )}
+              </div>
+            )}
+
             <label>
               Today's Tasks
               <textarea 
@@ -336,8 +737,8 @@ const DailyUpdates = () => {
               <button type="button" className="btn outline" id="dailyDraft" onClick={handleSaveDraft}>
                 Save Draft
               </button>
-              <button className="btn primary" type="submit">
-                Submit Update
+              <button className="btn primary" type="submit" disabled={submitLoading}>
+                {submitLoading ? 'Submitting...' : 'Submit Update'}
               </button>
             </div>
           </form>
@@ -374,10 +775,45 @@ const DailyUpdates = () => {
         <article className="panel table-panel active">
           <div className="panel-head pad">
             <div>
-              <h3>Daily Updates History ({updates.length})</h3>
+              <h3>Daily Updates History ({filteredEmployeeUpdates.length})</h3>
               <p>Your previous daily work logs and their approval status. Click any row to view full details.</p>
             </div>
           </div>
+          
+          <div className="pad" style={{ paddingBottom: '15px', borderBottom: '1px solid var(--line)', display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--muted)' }}>Filter by Date:</span>
+              <input 
+                type="date" 
+                value={filterDate} 
+                onChange={(e) => setFilterDate(e.target.value)} 
+                style={{ width: '150px', padding: '5px 10px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fff', fontSize: '11px', marginTop: 0 }}
+              />
+              {filterDate && (
+                <button 
+                  className="text-btn" 
+                  onClick={() => setFilterDate('')} 
+                  style={{ fontSize: '11px', cursor: 'pointer' }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--muted)' }}>Filter by Status:</span>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                style={{ width: '150px', padding: '4px 8px', borderRadius: '8px', border: '1px solid var(--line)', background: '#fff', fontSize: '11px', marginTop: 0 }}
+              >
+                <option value="">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="needs_changes">Needs Changes</option>
+              </select>
+            </div>
+          </div>
+
           <div className="table-wrap">
             <table style={{ minWidth: 'auto' }}>
               <thead>
@@ -387,7 +823,7 @@ const DailyUpdates = () => {
                 </tr>
               </thead>
               <tbody>
-                {updates.map((u) => (
+                {filteredEmployeeUpdates.map((u) => (
                   <tr 
                     key={u._id}
                     onClick={() => handleOpenDetail(u)}
@@ -407,10 +843,10 @@ const DailyUpdates = () => {
                     </td>
                   </tr>
                 ))}
-                {updates.length === 0 && (
+                {filteredEmployeeUpdates.length === 0 && (
                   <tr>
                     <td colSpan="2" style={{ textAlign: 'center', opacity: 0.7, padding: '30px' }}>
-                      No daily updates submitted yet.
+                      No daily updates match the filter criteria.
                     </td>
                   </tr>
                 )}
@@ -476,7 +912,7 @@ const DailyUpdates = () => {
                 </p>
               </div>
 
-              {selectedUpdate.manager_comment && (
+              {selectedUpdate.manager_comment && !selectedUpdate.comments?.length && (
                 <div style={{ background: '#fff0f2', padding: '12px', borderRadius: '8px', border: '1px solid var(--red)' }}>
                   <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--red)', marginBottom: '5px' }}>Manager Feedback</h4>
                   <p style={{ fontSize: '12px', margin: 0, whiteSpace: 'pre-wrap', color: 'var(--red)', fontWeight: 'bold' }}>
@@ -484,9 +920,75 @@ const DailyUpdates = () => {
                   </p>
                 </div>
               )}
+
+              {selectedUpdate.employee_comment && !selectedUpdate.comments?.length && (
+                <div style={{ background: '#eef8f4', padding: '12px', borderRadius: '8px', border: '1px solid var(--green)', marginTop: '10px' }}>
+                  <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--green)', marginBottom: '5px' }}>Your Acknowledgement</h4>
+                  <p style={{ fontSize: '12px', margin: 0, whiteSpace: 'pre-wrap', color: 'var(--green)', fontWeight: 'bold' }}>
+                    {selectedUpdate.employee_comment}
+                  </p>
+                </div>
+              )}
+
+              {selectedUpdate.comments && selectedUpdate.comments.length > 0 && (
+                <div style={{ borderTop: '1px solid var(--line)', paddingTop: '15px', marginTop: '10px' }}>
+                  <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '10px' }}>
+                    Feedback Conversation History
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {selectedUpdate.comments.map((c, idx) => {
+                      const isSelf = c.author_role === user.role;
+                      return (
+                        <div 
+                          key={idx} 
+                          style={{ 
+                            alignSelf: isSelf ? 'flex-end' : 'flex-start',
+                            maxWidth: '85%',
+                            background: isSelf ? '#f0f4ff' : '#f1f3f5',
+                            border: isSelf ? '1px solid #d0e0ff' : '1px solid #e1e3e6',
+                            padding: '10px 12px',
+                            borderRadius: '12px',
+                            fontSize: '12px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '4px', fontSize: '9px', fontWeight: 'bold', color: 'var(--muted)' }}>
+                            <span>{c.author_name} ({c.author_role})</span>
+                            <span>{new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                          <p style={{ margin: 0, whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>{c.text}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
+
+            {selectedUpdate.manager_status === 'needs_changes' && (
+              <div style={{ marginTop: '15px', borderTop: '1px solid var(--line)', paddingTop: '15px' }}>
+                <h4 style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--ink)', marginBottom: '8px' }}>
+                  Acknowledge Changes Response
+                </h4>
+                <textarea 
+                  rows="2"
+                  value={ackComment}
+                  onChange={(e) => setAckComment(e.target.value)}
+                  placeholder='Type your response (e.g., "Okay, I will do something else.")...'
+                  style={{ width: '100%', padding: '8px', borderRadius: '8px', border: '1px solid var(--line)', fontSize: '12px', boxSizing: 'border-box' }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                  <button 
+                    className="btn primary small"
+                    onClick={() => handleAcknowledge(selectedUpdate._id)}
+                    disabled={!ackComment.trim()}
+                  >
+                    Submit Response
+                  </button>
+                </div>
+              </div>
+            )}
             
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--line)', paddingTop: '15px' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--line)', paddingTop: '15px', marginTop: '15px' }}>
               <button className="btn outline" onClick={() => setDetailModalOpen(false)}>
                 Close
               </button>

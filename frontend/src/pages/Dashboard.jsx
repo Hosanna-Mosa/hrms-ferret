@@ -463,11 +463,12 @@ const Dashboard = () => {
 
         {/* Project Details Modal */}
         {selectedProjectDetail && (
-          <div className="modal" style={{ display: 'grid' }}>
+          <div className="modal">
             <div className="backdrop" onClick={() => setSelectedProjectDetail(null)}></div>
             <div className="modal-card" style={{ maxWidth: '520px' }}>
               <button className="modal-x" onClick={() => setSelectedProjectDetail(null)}>×</button>
-              <span className="eyebrow" style={{ color: 'var(--blue)' }}>PROJECT WORKSPACE DETAILS</span>
+              <div className="modal-body">
+                <span className="eyebrow" style={{ color: 'var(--blue)' }}>PROJECT WORKSPACE DETAILS</span>
               <h2 style={{ fontSize: '22px', margin: '4px 0 2px' }}>{selectedProjectDetail.name}</h2>
               <code style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '15px' }}>Key: {selectedProjectDetail.key}</code>
               
@@ -536,6 +537,7 @@ const Dashboard = () => {
                 ) : (
                   <div style={{ fontSize: '11px', color: 'var(--muted)', padding: '10px 0' }}>No active developers currently assigned tasks in this project.</div>
                 )}
+              </div>
               </div>
             </div>
           </div>
