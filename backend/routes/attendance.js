@@ -4,21 +4,38 @@ const Attendance = require('../models/Attendance');
 const auth = require('../middleware/auth');
 const role = require('../middleware/role');
 
+const { autoClockOut } = require('../services/autoClockOutService');
+
+const getKolkataDateString = (date = new Date()) => {
+  const kolkataTime = new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const year = kolkataTime.getFullYear();
+  const monthStr = String(kolkataTime.getMonth() + 1).padStart(2, '0');
+  const dayStr = String(kolkataTime.getDate()).padStart(2, '0');
+  return { dateString: `${year}-${monthStr}-${dayStr}`, localTime: kolkataTime };
+};
+
 // POST /api/attendance/check-in
 router.post('/check-in', auth, async (req, res) => {
   const { work_mode, location_data } = req.body;
-  const today = new Date().toISOString().slice(0, 10);
   
-  const now = new Date();
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
-  let status = 'present';
-  
-  if (currentHour > 9 || (currentHour === 9 && currentMinute > 15)) {
-    status = 'late';
-  }
-
   try {
+    await autoClockOut();
+
+    const { dateString: today, localTime: kolkataTime } = getKolkataDateString();
+    const currentHour = kolkataTime.getHours();
+    const currentMinute = kolkataTime.getMinutes();
+
+    if (currentHour < 9) {
+      return res.status(400).json({ message: 'Clock-in is not allowed before 9:00 AM.' });
+    }
+
+    let status = 'present';
+    if (currentHour > 9 || (currentHour === 9 && currentMinute > 30)) {
+      status = 'late';
+    }
+
+    const now = new Date();
+
     // MongoDB findOneAndUpdate with upsert
     const attendance = await Attendance.findOneAndUpdate(
       { employee_id: req.user.employeeId, work_date: today },
@@ -45,8 +62,10 @@ router.post('/check-in', auth, async (req, res) => {
 
 // POST /api/attendance/break/start
 router.post('/break/start', auth, async (req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
   try {
+    await autoClockOut();
+
+    const { dateString: today } = getKolkataDateString();
     const attendance = await Attendance.findOne({ employee_id: req.user.employeeId, work_date: today }).exec();
 
     if (!attendance) {
@@ -66,8 +85,10 @@ router.post('/break/start', auth, async (req, res) => {
 
 // POST /api/attendance/break/end
 router.post('/break/end', auth, async (req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
   try {
+    await autoClockOut();
+
+    const { dateString: today } = getKolkataDateString();
     const attendance = await Attendance.findOne({ employee_id: req.user.employeeId, work_date: today }).exec();
 
     if (!attendance) {
@@ -97,10 +118,12 @@ router.post('/break/end', auth, async (req, res) => {
 
 // POST /api/attendance/check-out
 router.post('/check-out', auth, async (req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
-  const now = new Date();
-  
   try {
+    await autoClockOut();
+
+    const { dateString: today } = getKolkataDateString();
+    const now = new Date();
+    
     const attendance = await Attendance.findOne({ employee_id: req.user.employeeId, work_date: today }).exec();
 
     if (!attendance) {
@@ -135,6 +158,7 @@ router.post('/check-out', auth, async (req, res) => {
 router.get('/me', auth, async (req, res) => {
   const { month } = req.query; // Format: YYYY-MM
   try {
+    await autoClockOut();
     const query = { employee_id: req.user.employeeId };
     
     if (month) {
@@ -155,8 +179,9 @@ router.get('/me', auth, async (req, res) => {
 
 // GET /api/admin/attendance/report (Today's check-ins across organization)
 router.get('/admin/attendance/report', auth, role(['HR', 'Manager', 'SuperAdmin']), async (req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
   try {
+    await autoClockOut();
+    const { dateString: today } = getKolkataDateString();
     const reports = await Attendance.find({ work_date: today })
       .populate('employee_id')
       .exec();
@@ -182,6 +207,142 @@ router.post('/corrections', auth, async (req, res) => {
 
 router.patch('/admin/attendance/corrections/:id', auth, role(['HR', 'Manager', 'SuperAdmin']), (req, res) => {
   res.json({ message: 'Attendance correction request resolved.', status: 'approved' });
+});
+
+
+// GET /api/attendance/admin/export
+router.get('/admin/export', auth, role(['HR', 'SuperAdmin']), async (req, res) => {
+  const month = req.query.month || new Date().toISOString().slice(0, 7);
+  try {
+    await autoClockOut();
+    const Employee = require('../models/Employee');
+    const Leave = require('../models/Leave');
+
+    const employees = await Employee.find({}).exec();
+
+    // Calculate days of the month
+    const [year, monthNum] = month.split('-').map(Number);
+    const daysInMonth = new Date(year, monthNum, 0).getDate();
+    const dates = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dayStr = String(d).padStart(2, '0');
+      dates.push(`${month}-${dayStr}`);
+    }
+
+    const escapeCSV = (val) => {
+      if (val === undefined || val === null) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    // Build headers
+    let csvHeaders = ['Employee Code', 'Full Name', 'Department', 'Designation'];
+    dates.forEach(d => {
+      csvHeaders.push(d);
+    });
+    csvHeaders.push('Total Late in Month', 'Total Leaves in Month', 'Total Paid Leaves', 'Total Unpaid Leaves');
+
+    let csvContent = csvHeaders.map(escapeCSV).join(',') + '\n';
+
+    const getLocalDateString = (d) => {
+      const y = d.getFullYear();
+      const mStr = String(d.getMonth() + 1).padStart(2, '0');
+      const dStr = String(d.getDate()).padStart(2, '0');
+      return `${y}-${mStr}-${dStr}`;
+    };
+
+    for (const emp of employees) {
+      // Get attendance logs
+      const logs = await Attendance.find({
+        employee_id: emp._id,
+        work_date: new RegExp('^' + month)
+      }).exec();
+
+      const attendanceByDate = {};
+      logs.forEach(l => {
+        attendanceByDate[l.work_date] = l;
+      });
+
+      // Get approved leaves that overlap with the month
+      const monthStart = new Date(`${month}-01T00:00:00.000Z`);
+      const monthEnd = new Date(year, monthNum, 0, 23, 59, 59, 999);
+      
+      const leaves = await Leave.find({
+        employee_id: emp._id,
+        status: 'approved',
+        start_date: { $lte: monthEnd },
+        end_date: { $gte: monthStart }
+      }).exec();
+
+      const leaveDates = new Set();
+      const paidLeaveDates = new Set();
+      const unpaidLeaveDates = new Set();
+      const leaveTypesByDate = {};
+
+      leaves.forEach(lv => {
+        let curr = new Date(lv.start_date);
+        const end = new Date(lv.end_date);
+        while (curr <= end) {
+          const dateString = getLocalDateString(curr);
+          if (dateString.startsWith(month)) {
+            leaveDates.add(dateString);
+            leaveTypesByDate[dateString] = lv.leave_type;
+            if (lv.leave_type === 'Unpaid Leave') {
+              unpaidLeaveDates.add(dateString);
+            } else {
+              paidLeaveDates.add(dateString);
+            }
+          }
+          curr.setDate(curr.getDate() + 1);
+        }
+      });
+
+      // Fill in daily status
+      const row = [emp.employee_code, emp.full_name, emp.department, emp.designation];
+      let lateCount = 0;
+
+      dates.forEach(d => {
+        if (attendanceByDate[d]) {
+          const log = attendanceByDate[d];
+          if (log.status === 'late') {
+            row.push('Late');
+            lateCount++;
+          } else if (log.work_mode === 'wfh' || log.work_mode === 'remote') {
+            row.push('WFH');
+          } else {
+            row.push('Present');
+          }
+        } else if (leaveDates.has(d)) {
+          row.push(`Leave (${leaveTypesByDate[d] || 'Approved'})`);
+        } else {
+          const dayOfWeek = new Date(d).getDay();
+          const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+          if (isWeekend) {
+            row.push('Weekend');
+          } else {
+            row.push('Absent');
+          }
+        }
+      });
+
+      row.push(lateCount);
+      row.push(leaveDates.size);
+      row.push(paidLeaveDates.size);
+      row.push(unpaidLeaveDates.size);
+
+      csvContent += row.map(escapeCSV).join(',') + '\n';
+    }
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=attendance_report_${month}.csv`);
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Error exporting attendance CSV:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
 // GET /api/attendance/employee/:employeeId

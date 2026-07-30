@@ -496,8 +496,20 @@ const ProjectsSprints = () => {
                   />
                 </label>
 
-                <button type="submit" className="btn outline small full" style={{ fontSize: '11px', padding: '6px' }}>
-                  Upload to Cloud
+                <button 
+                  type="submit" 
+                  className="btn primary small full" 
+                  style={{ 
+                    fontSize: '11px', 
+                    padding: '9px 12px', 
+                    marginTop: '15px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <span>☁️</span> Upload to Cloud
                 </button>
               </form>
             </article>

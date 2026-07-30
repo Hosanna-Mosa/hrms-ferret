@@ -190,6 +190,27 @@ const Attendance = () => {
     a.click();
   };
 
+  const exportAllEmployeesAttendance = async () => {
+    try {
+      const res = await apiRequest(`/api/attendance/admin/export?month=${currentMonth}`);
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.setAttribute('href', url);
+        a.setAttribute('download', `attendance_report_${currentMonth}.csv`);
+        a.click();
+        window.URL.revokeObjectURL(url);
+      } else {
+        const err = await res.json();
+        alert(err.message || 'Failed to export attendance report');
+      }
+    } catch (e) {
+      console.error('Error exporting all employees attendance:', e);
+      alert('Error exporting all employees attendance');
+    }
+  };
+
   const getCalendarDays = () => {
     const days = [];
     const daysInMonth = 31; // hardcoded July for prototype match
@@ -381,31 +402,42 @@ const Attendance = () => {
               : 'Clock in, clock out, manage breaks, and review your monthly attendance.'}
           </p>
         </div>
-        {user?.role !== 'SuperAdmin' && (
-          <div className="segmented">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {['HR', 'SuperAdmin'].includes(user?.role) && (
             <button 
-              className={workMode === 'remote' ? 'active' : ''} 
-              onClick={() => attendance.status === 'idle' && setWorkMode('remote')}
-              disabled={attendance.status !== 'idle'}
+              className="btn primary" 
+              onClick={exportAllEmployeesAttendance}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
             >
-              Remote
+              <span>📥</span> Export All Attendance
             </button>
-            <button 
-              className={workMode === 'office' ? 'active' : ''} 
-              onClick={() => attendance.status === 'idle' && setWorkMode('office')}
-              disabled={attendance.status !== 'idle'}
-            >
-              Office
-            </button>
-            <button 
-              className={workMode === 'wfh' ? 'active' : ''} 
-              onClick={() => attendance.status === 'idle' && setWorkMode('wfh')}
-              disabled={attendance.status !== 'idle'}
-            >
-              WFH
-            </button>
-          </div>
-        )}
+          )}
+          {user?.role !== 'SuperAdmin' && (
+            <div className="segmented">
+              <button 
+                className={workMode === 'remote' ? 'active' : ''} 
+                onClick={() => attendance.status === 'idle' && setWorkMode('remote')}
+                disabled={attendance.status !== 'idle'}
+              >
+                Remote
+              </button>
+              <button 
+                className={workMode === 'office' ? 'active' : ''} 
+                onClick={() => attendance.status === 'idle' && setWorkMode('office')}
+                disabled={attendance.status !== 'idle'}
+              >
+                Office
+              </button>
+              <button 
+                className={workMode === 'wfh' ? 'active' : ''} 
+                onClick={() => attendance.status === 'idle' && setWorkMode('wfh')}
+                disabled={attendance.status !== 'idle'}
+              >
+                WFH
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {user?.role !== 'SuperAdmin' && (
@@ -423,13 +455,18 @@ const Attendance = () => {
               </span>
               <h2 id="attClock">{clock}</h2>
               <p id="attDate">{dateStr}</p>
+              {attendance.status === 'idle' && new Date().getHours() < 9 && (
+                <p style={{ color: 'var(--red)', fontSize: '10px', marginTop: '6px', fontWeight: 'bold' }}>
+                  ⚠️ Clock-in will be enabled at 9:00 AM.
+                </p>
+              )}
             </div>
             <div className="actions">
               <button 
                 className="btn primary" 
                 id="attCheckIn" 
                 onClick={handleCheckIn} 
-                disabled={attendance.status !== 'idle'}
+                disabled={attendance.status !== 'idle' || new Date().getHours() < 9}
               >
                 Clock In
               </button>
