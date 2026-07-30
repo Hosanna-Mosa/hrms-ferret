@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const Sidebar = ({ isOpen, toggleSidebar }) => {
+const Sidebar = ({ isOpen, toggleSidebar, onMouseEnter, onMouseLeave, onLinkClick }) => {
   const { user, logout } = useAuth();
   
   if (!user) return null;
@@ -82,7 +82,12 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
   }
 
   return (
-    <aside className={`sidebar ${isOpen ? 'open' : ''}`} id="sidebar">
+    <aside 
+      className={`sidebar ${isOpen ? 'open' : ''}`} 
+      id="sidebar"
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
       <button 
         className="close-sidebar-btn" 
         onClick={toggleSidebar} 
@@ -122,7 +127,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
             to={`/${item.page}`}
             end={item.page === ''}
             className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-            onClick={toggleSidebar}
+            onClick={onLinkClick}
           >
             <span>{item.icon}</span>
             {item.label}

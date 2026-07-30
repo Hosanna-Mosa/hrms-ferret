@@ -67,6 +67,9 @@ app.use((err, req, res, next) => {
 });
 
 // Start Server
+const { startAutoClockOutJob } = require('./services/autoClockOutService');
+startAutoClockOutJob();
+
 app.listen(PORT, () => {
   console.log(`Server is running in ${process.env.NODE_ENV} mode on port ${PORT}`);
 });
